@@ -34,6 +34,7 @@ CHORD_PC_EMBED_DIM = 4
 CHORD_EMBED_DIM = 8
 BARPOS_EMBED_DIM = 8
 NUM_RNN_LAYERS = 2
+TICKS_PER_MEASURE = 96
 
 # Dictionaries
 NOTES_MAP = {'rest': 88, 'B#': 0, 'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 

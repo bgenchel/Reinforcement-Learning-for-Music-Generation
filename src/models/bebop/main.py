@@ -28,7 +28,7 @@ from data_iter import GenDataset, DscrDataset
 
 sys.path.append(str(Path(op.abspath(__file__)).parents[2]))
 from utils import constants as const
-from utils.data.datasets import BebopTicksDataset
+from utils.data.datasets import HDF5Dataset
 from utils.data.dataloaders import SplitDataLoader
 
 import pdb
@@ -46,6 +46,9 @@ parser.add_argument('-fpt', '--force_pretrain', default=False, action='store_tru
                     help="force pretraining of generator and discriminator, instead of loading from cache.")
 parser.add_argument('-nc', '--no_cuda', action='store_true', help="don't use CUDA, even if it is available.")
 parser.add_argument('-cd', '--cuda_device', default=0, type=int, help="Which GPU to use")
+parser.add_argument('-d', '--dataset', default=0, type=int, help="Which dataset to train with.")
+parser.add_argument('-d', '--dataset', choices=("charlie_parker", "bebop", "nottingham"), type=str, 
+                    required=True, help="the dataset to train with.")
 args = parser.parse_args()
 
 args.cuda = False
@@ -54,15 +57,15 @@ if torch.cuda.is_available() and (not args.no_cuda):
     args.cuda = True
 
 # Paths
-root_dir = str(Path(op.abspath(__file__)).parents[3])
-data_dir = op.join(root_dir, "data", "processed", "bebop-songs")
+ROOT_DIR = str(Path(op.abspath(__file__)).parents[3])
+DATA_DIR = op.join(ROOT_DIR, "data", "processed", "%s-hdf5" % args.dataset)
 
 # General Training Paramters
-SEED = 88 # for the randomize
-BATCH_SIZE = 128
+SEED = 88 # for the randomize, no reason behind this number
+BATCH_SIZE = 64
 GAN_TRAIN_EPOCHS = 200 # number of adversarial training epochs
-NUM_SAMPLES = 5000 # num samples in the data files for training discriminator
-VOCAB_SIZE = 89
+NUM_SAMPLES = 5000 # num samples in each data file for training discriminator
+VOCAB_SIZE = 89 # 1 tick has how many dims?
 
 # Pretraining Params
 GEN_PRETRAIN_EPOCHS = 120
@@ -76,12 +79,13 @@ D_DATA_GENS = 4
 D_STEPS = 2
 
 # Paths
-TEMP_DATA_DIR = 'temp_data'
-PT_DIR = 'pretrained'
-REAL_FILE = op.join(TEMP_DATA_DIR, 'real.data')
-GEN_FILE = op.join(TEMP_DATA_DIR, 'generated.data')
-PT_GEN_MODEL_FILE = op.join(PT_DIR, 'generator.pt')
-PT_DSCR_MODEL_FILE = op.join(PT_DIR, 'discriminator.pt')
+TEMP_DATA_DIR = "temp_data"
+REAL_FILE = op.join(TEMP_DATA_DIR, "real.data")
+GEN_FILE = op.join(TEMP_DATA_DIR, "generated.data")
+
+PT_DIR = "pretrained"
+PT_GEN_MODEL_FILE = op.join(PT_DIR, "generator.pt")
+PT_DSCR_MODEL_FILE = op.join(PT_DIR, "discriminator.pt")
 
 # Generator Model Params
 gen_embed_dim = 64
@@ -95,7 +99,7 @@ dscr_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 dscr_dropout = 0.75
 dscr_num_classes = 2 
 
-
+######
 # This method allows us to train the model stochastically, as opposed to training over the full dataset, which
 # for nottingham is over 170K samples. Each time we need a new real.data file, we first get
 # a new dataloader using this method, that has a new set of NUM_SAMPLES random samples from the original dataset.
@@ -140,7 +144,7 @@ def create_real_data_file(data_iter, output_file):
 # trains `model` for one epoch using data from `data_iter`. train_type refers to the option of training the model
 # using either 'full sequence' or 'next step' (teacher forcing). For this model, we only use full sequence training
 # because it is how it was done in the original.
-def train_epoch(model, data_iter, loss_fn, optimizer, train_type, pretrain_gen=False):
+def train_epoch(model, data_iter, loss_fn, optimizer, pretrain_gen=False):
     total_loss = 0.0
     total_words = 0.0
     total_batches = 0.0
@@ -152,18 +156,13 @@ def train_epoch(model, data_iter, loss_fn, optimizer, train_type, pretrain_gen=F
             data_var = Variable(data)
             target_var = Variable(target)
 
-        pdb.set_trace()
-
+        # pdb.set_trace()
         if args.cuda and torch.cuda.is_available():
             data_var, target_var = data_var.cuda(), target_var.cuda()
 
         target_var = target_var.contiguous().view(-1)
         pred = model.forward(data_var)
-
-        if train_type == "full_sequence":
-            pred = pred.view(-1, pred.size()[-1])
-        elif train_type == "next_step":
-            pred = pred[:, -1, :]
+        pred = pred.view(-1, pred.size()[-1])
 
         loss = loss_fn(pred, target_var)
         total_loss += loss.item()
@@ -198,11 +197,7 @@ def eval_epoch(model, data_iter, loss_fn, train_type, pretrain_gen=True):
 
             target_var = target_var.contiguous().view(-1)
             pred = model.forward(data_var)
-
-            if train_type == "full_sequence":
-                pred = pred.view(-1, pred.size()[-1])
-            elif train_type == "next_step":
-                pred = pred[:, -1, :]
+            pred = pred.view(-1, pred.size()[-1])
 
             loss = loss_fn(pred, target_var)
             total_loss += loss.item()
@@ -230,9 +225,10 @@ def main():
     # We load the dataset twice because, while a train and validation split is useful for MLE, we don't want to exclude
     # data points when generating a sample for the discriminator. 
     print("Loading Data ...")
-    pretrain_dataset = BebopTicksDataset(data_dir, train_type=args.train_type, data_format="nums", force_reload=True)
-    dataset = copy.deepcopy(pretrain_dataset)
-    train_loader, valid_loader = SplitDataLoader(pretrain_dataset, batch_size=BATCH_SIZE, drop_last=True).split()
+    # pretrain_dataset = BebopTicksDataset(data_dir, train_type=args.train_type, data_format="nums", force_reload=True)
+    pretrain_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-mle.h5" % args.dataset)) 
+    rl_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-rl.h5" % args.dataset)) 
+    pt_train_loader, pt_valid_loader = SplitDataLoader(pretrain_dataset, batch_size=BATCH_SIZE, drop_last=True).split()
     print("Done.")
 
     # Define Networks
@@ -267,12 +263,11 @@ def main():
             gen_criterion = gen_criterion.cuda()
 
         for epoch in range(GEN_PRETRAIN_EPOCHS):
-            train_loss = train_epoch(generator, train_loader, gen_criterion, gen_optimizer, args.train_type,
-                    pretrain_gen=True)
+            train_loss = train_epoch(generator, train_loader, gen_criterion, gen_optimizer, pretrain_gen=True)
             pt_gen_train_loss.append(train_loss)
             print('::PRETRAIN GEN:: Epoch [%d] Training Loss: %f'% (epoch, train_loss))
 
-            valid_loss = eval_epoch(generator, valid_loader, gen_criterion, args.train_type, pretrain_gen=True)
+            valid_loss = eval_epoch(generator, valid_loader, gen_criterion, pretrain_gen=True)
             pt_gen_valid_loss.append(valid_loss)
             print('::PRETRAIN GEN:: Epoch [%d] Validation Loss: %f'% (epoch, valid_loss))
 
@@ -305,12 +300,12 @@ def main():
             dscr_criterion = dscr_criterion.cuda()
         for i in range(DSCR_PRETRAIN_DATA_GENS):
             print('Creating real and fake datafiles ...')
-            data_loader = get_subset_dataloader(dataset)
+            rl_data_loader = get_subset_dataloader(dataset)
             create_generated_data_file(generator, len(data_loader), GEN_FILE)
             create_real_data_file(data_loader, REAL_FILE)
             dscr_data_iter = DataLoader(DscrDataset(REAL_FILE, GEN_FILE), batch_size=BATCH_SIZE, shuffle=True)
             for j in range(DSCR_PRETRAIN_EPOCHS):
-                loss = train_epoch(discriminator, dscr_data_iter, dscr_criterion, dscr_optimizer, args.train_type)
+                loss = train_epoch(discriminator, dscr_data_iter, dscr_criterion, dscr_optimizer)
                 pt_dscr_loss.append(loss)
                 print('::PRETRAIN DSCR:: Data Gen [%d] Epoch [%d] Loss: %f' % (i, j, loss))
 
@@ -395,7 +390,7 @@ def main():
 
             # Check how our MLE validation changes with GAN loss. We've noticed it going up, but are unsure
             # if this is a good metric by which to validate for this type of training.
-            valid_loss = eval_epoch(generator, valid_loader, gen_criterion, args.train_type)
+            valid_loss = eval_epoch(generator, valid_loader, gen_criterion)
             print('Adv Epoch [%d], Gen Step [%d] - Valid Loss: %f' % (epoch, gstep, valid_loss))
 
             # Update the parameters of the generator copy inside the rollout object.
@@ -411,7 +406,7 @@ def main():
             create_real_data_file(data_loader, GEN_FILE)
             dscr_data_iter = DataLoader(DscrDataset(REAL_FILE, GEN_FILE), batch_size=BATCH_SIZE, shuffle=True)
             for dstep in range(D_STEPS):
-                loss = train_epoch(discriminator, dscr_data_iter, dscr_criterion, dscr_optimizer, args.train_type)
+                loss = train_epoch(discriminator, dscr_data_iter, dscr_criterion, dscr_optimizer)
                 total_dscr_loss += loss
                 print('Adv Epoch [%d], Dscr Gen [%d], Dscr Step [%d] - Loss: %f' % (epoch, data_gen, dstep, loss))
         adv_dscr_loss.append(total_dscr_loss / (D_DATA_GENS * D_STEPS))
