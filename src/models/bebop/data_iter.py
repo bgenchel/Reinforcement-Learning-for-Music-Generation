@@ -22,7 +22,6 @@ def read_file(data_file):
 
 
 class GenDataset(object):
-    """ Toy data iter to load digits"""
     def __init__(self, data_file, **kwargs):
         super().__init__(**kwargs)
         self.data_lis = read_file(data_file)
@@ -35,8 +34,6 @@ class GenDataset(object):
 
 
 class DscrDataset(Dataset):
-    """ Toy data iter to load digits"""
-
     def __init__(self, real_data_file, gen_data_file, **kwargs):
         super().__init__(**kwargs)
         real_data = read_file(real_data_file)
