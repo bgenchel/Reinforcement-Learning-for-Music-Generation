@@ -2,6 +2,7 @@
 adapted from https://github.com/ZiJianZhao/SeqGAN-PyTorch
 """
 import argparse
+import bdb
 import copy
 import json
 import math
@@ -46,7 +47,6 @@ parser.add_argument('-fpt', '--force_pretrain', default=False, action='store_tru
                     help="force pretraining of generator and discriminator, instead of loading from cache.")
 parser.add_argument('-nc', '--no_cuda', action='store_true', help="don't use CUDA, even if it is available.")
 parser.add_argument('-cd', '--cuda_device', default=0, type=int, help="Which GPU to use")
-parser.add_argument('-d', '--dataset', default=0, type=int, help="Which dataset to train with.")
 parser.add_argument('-d', '--dataset', choices=("charlie_parker", "bebop", "nottingham"), type=str, 
                     required=True, help="the dataset to train with.")
 args = parser.parse_args()
@@ -144,17 +144,42 @@ def create_real_data_file(data_iter, output_file):
 # trains `model` for one epoch using data from `data_iter`. train_type refers to the option of training the model
 # using either 'full sequence' or 'next step' (teacher forcing). For this model, we only use full sequence training
 # because it is how it was done in the original.
-def train_epoch(model, data_iter, loss_fn, optimizer, pretrain_gen=False):
+def pretrain_epoch(model, data_iter, loss_fn, optimizer, pretrain_gen=False):
+    total_loss = 0.0
+    total_words = 0.0
+    total_batches = 0.0
+    for data in tqdm(data_iter, desc=' - Training', leave=False):
+        data_var = Variable(data["sequences"])
+        target_var = Variable(data['targets'])
+
+        if args.cuda and torch.cuda.is_available():
+            data_var, target_var = data_var.cuda(), target_var.cuda()
+
+        target_var = target_var.contiguous().view(-1)
+        pred = model.forward(data_var)
+        pred = pred.view(-1, pred.size()[-1])
+
+        loss = loss_fn(pred, target_var)
+        total_loss += loss.item()
+        total_words += data_var.size(0) * data_var.size(1)
+        total_batches += 1
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    if type(model) == Discriminator:
+        return total_loss / (total_batches * BATCH_SIZE)
+    else:
+        return total_loss / total_words
+
+def train_epoch(model, data_iter, loss_fn, optimizer):
     total_loss = 0.0
     total_words = 0.0
     total_batches = 0.0
     for (data, target) in tqdm(data_iter, desc=' - Training', leave=False):
-        if pretrain_gen:
-            data_var = Variable(data[const.TICK_KEY])
-            target_var = Variable(target[const.TICK_KEY])
-        else:
-            data_var = Variable(data)
-            target_var = Variable(target)
+        data_var = Variable(data)
+        target_var = Variable(target)
 
         # pdb.set_trace()
         if args.cuda and torch.cuda.is_available():
@@ -209,7 +234,7 @@ def eval_epoch(model, data_iter, loss_fn, train_type, pretrain_gen=True):
         return total_loss / total_words
 
 
-def main():
+def main(pretrain_dataset, rl_dataset):
     # for keeping track of loss curves so we can plot them later
     pt_gen_train_loss = []
     pt_gen_valid_loss = []
@@ -221,15 +246,8 @@ def main():
     random.seed(SEED)
     np.random.seed(SEED)
 
-    # Load data
-    # We load the dataset twice because, while a train and validation split is useful for MLE, we don't want to exclude
-    # data points when generating a sample for the discriminator. 
-    print("Loading Data ...")
-    # pretrain_dataset = BebopTicksDataset(data_dir, train_type=args.train_type, data_format="nums", force_reload=True)
-    pretrain_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-mle.h5" % args.dataset)) 
-    rl_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-rl.h5" % args.dataset)) 
+    # load datasets
     pt_train_loader, pt_valid_loader = SplitDataLoader(pretrain_dataset, batch_size=BATCH_SIZE, drop_last=True).split()
-    print("Done.")
 
     # Define Networks
     generator = Generator(VOCAB_SIZE, gen_embed_dim, gen_hidden_dim, args.cuda)
@@ -263,11 +281,12 @@ def main():
             gen_criterion = gen_criterion.cuda()
 
         for epoch in range(GEN_PRETRAIN_EPOCHS):
-            train_loss = train_epoch(generator, train_loader, gen_criterion, gen_optimizer, pretrain_gen=True)
+            pdb.set_trace()
+            train_loss = pretrain_epoch(generator, pt_train_loader, gen_criterion, gen_optimizer, pretrain_gen=True)
             pt_gen_train_loss.append(train_loss)
             print('::PRETRAIN GEN:: Epoch [%d] Training Loss: %f'% (epoch, train_loss))
 
-            valid_loss = eval_epoch(generator, valid_loader, gen_criterion, pretrain_gen=True)
+            valid_loss = eval_epoch(generator, pt_valid_loader, gen_criterion, pretrain_gen=True)
             pt_gen_valid_loss.append(valid_loss)
             print('::PRETRAIN GEN:: Epoch [%d] Validation Loss: %f'% (epoch, valid_loss))
 
@@ -307,7 +326,7 @@ def main():
             for j in range(DSCR_PRETRAIN_EPOCHS):
                 loss = train_epoch(discriminator, dscr_data_iter, dscr_criterion, dscr_optimizer)
                 pt_dscr_loss.append(loss)
-                print('::PRETRAIN DSCR:: Data Gen [%d] Epoch [%d] Loss: %f' % (i, j, loss))
+                print("::PRETRAIN DSCR:: Data Gen [%d] Epoch [%d] Loss: %f" % (i, j, loss))
 
         print('Caching Pretrained Discriminator ...')
         torch.save({'state_dict': discriminator.state_dict(),
@@ -390,7 +409,7 @@ def main():
 
             # Check how our MLE validation changes with GAN loss. We've noticed it going up, but are unsure
             # if this is a good metric by which to validate for this type of training.
-            valid_loss = eval_epoch(generator, valid_loader, gen_criterion)
+            valid_loss = eval_epoch(generator, pt_valid_loader, gen_criterion)
             print('Adv Epoch [%d], Gen Step [%d] - Valid Loss: %f' % (epoch, gstep, valid_loss))
 
             # Update the parameters of the generator copy inside the rollout object.
@@ -427,4 +446,14 @@ def main():
     torch.save({'adv_gen_losses': adv_gen_loss, 'adv_dscr_losses': adv_dscr_loss}, op.join(run_dir, 'losses.pt'))
 
 if __name__ == '__main__':
-        main()
+    print("Loading Data ...")
+    pretrain_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-mle.h5" % args.dataset)) 
+    rl_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-rl.h5" % args.dataset)) 
+    print("Done.")
+
+    try:
+        main(pretrain_dataset, rl_dataset)
+    except (KeyboardInterrupt, ValueError, OSError, RuntimeError, NameError, bdb.BdbQuit):
+        print("Closing Datasets ...")
+        pretrain_dataset.terminate()
+        rl_dataset.terminate()
