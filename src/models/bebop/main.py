@@ -281,7 +281,7 @@ def main(pretrain_dataset, rl_dataset):
             gen_criterion = gen_criterion.cuda()
 
         for epoch in range(GEN_PRETRAIN_EPOCHS):
-            pdb.set_trace()
+            # pdb.set_trace()
             train_loss = pretrain_epoch(generator, pt_train_loader, gen_criterion, gen_optimizer, pretrain_gen=True)
             pt_gen_train_loss.append(train_loss)
             print('::PRETRAIN GEN:: Epoch [%d] Training Loss: %f'% (epoch, train_loss))
