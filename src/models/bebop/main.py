@@ -59,6 +59,8 @@ if torch.cuda.is_available() and (not args.no_cuda):
 # Paths
 ROOT_DIR = str(Path(op.abspath(__file__)).parents[3])
 DATA_DIR = op.join(ROOT_DIR, "data", "processed", "%s-hdf5" % args.dataset)
+TEMP_DATA_DIR = op.join(os.getcwd(), "temp_data")
+PT_CACHE_DIR = op.join(os.getcwd(), "pretrained")
 
 # General Training Paramters
 SEED = 88 # for the randomize, no reason behind this number
@@ -68,7 +70,8 @@ NUM_SAMPLES = 5000 # num samples in each data file for training discriminator
 VOCAB_SIZE = 89 # 1 tick has how many dims?
 
 # Pretraining Params
-GEN_PRETRAIN_EPOCHS = 120
+# GEN_PRETRAIN_EPOCHS = 120
+GEN_PRETRAIN_EPOCHS = 10
 DSCR_PRETRAIN_DATA_GENS = 10
 DSCR_PRETRAIN_EPOCHS = 6
 
@@ -77,15 +80,6 @@ NUM_ROLLOUTS = 16
 G_STEPS = 1
 D_DATA_GENS = 4
 D_STEPS = 2
-
-# Paths
-TEMP_DATA_DIR = "temp_data"
-REAL_FILE = op.join(TEMP_DATA_DIR, "real.data")
-GEN_FILE = op.join(TEMP_DATA_DIR, "generated.data")
-
-PT_DIR = "pretrained"
-PT_GEN_MODEL_FILE = op.join(PT_DIR, "generator.pt")
-PT_DSCR_MODEL_FILE = op.join(PT_DIR, "discriminator.pt")
 
 # Generator Model Params
 gen_embed_dim = 64
@@ -113,13 +107,16 @@ def get_subset_dataloader(dataset):
 
 
 # Generates `num_batches` batches of size BATCH_SIZE from the generator. Stores the data in `output_file`
-def create_generated_data_file(model, num_batches, output_file):
+def create_generated_data_file(model, num_batches, outpath):
+    pdb.set_trace()
     samples = []
     for _ in range(num_batches):
         sample_batch = model.sample(BATCH_SIZE, gen_seq_len).cpu().data.numpy().tolist()
         samples.extend(sample_batch)
     
-    with open(output_file, 'w') as fout:
+    if not op.exists(op.dirname(outpath)):
+        os.makedirs(op.dirname(outpath))
+    with open(outpath, 'w') as fout:
         for sample in samples:
             str_sample = ' '.join([str(s) for s in sample])
             fout.write('%s\n' % str_sample)
@@ -128,10 +125,11 @@ def create_generated_data_file(model, num_batches, output_file):
 
 # Iterates through `data_iter` and stores all its targets in `output_file`.
 def create_real_data_file(data_iter, output_file):
+    print('inside create_real_data_file')
     samples = []
-    data_iter = iter(data_iter)
-    for (data, target) in data_iter:
-        sample_batch = list(target[const.TICK_KEY].numpy())
+    # data_iter = iter(data_iter)
+    for data in tqdm(data_iter, desc=' - Create Real Data File', leave=False):
+        sample_batch = list(data[const.SEQS_KEY].numpy())
         samples.extend(sample_batch)
 
     with open(output_file, 'w') as fout:
@@ -168,6 +166,12 @@ def pretrain_epoch(model, data_iter, loss_fn, optimizer, pretrain_gen=False):
         loss.backward()
         optimizer.step()
 
+        ############################
+        # just temporary, for debugging
+        if total_batches > 100:
+            break
+        ###########################
+
     if type(model) == Discriminator:
         return total_loss / (total_batches * BATCH_SIZE)
     else:
@@ -203,19 +207,46 @@ def train_epoch(model, data_iter, loss_fn, optimizer):
     else:
         return total_loss / total_words
 
+def preeval_epoch(model, data_iter, loss_fn):
+    total_loss = 0.0
+    total_words = 0.0
+    count = 0 # temp for debugging
+    with torch.no_grad():
+        for data in tqdm(data_iter, desc= " - Evaluation", leave=False):
+            data_var = Variable(data["sequences"])
+            target_var = Variable(data["targets"])
+
+            if args.cuda and torch.cuda.is_available():
+                data_var, target_var = data_var.cuda(), target_var.cuda()
+
+            target_var = target_var.contiguous().view(-1)
+            pred = model.forward(data_var)
+            pred = pred.view(-1, pred.size()[-1])
+
+            loss = loss_fn(pred, target_var)
+            total_loss += loss.item()
+            total_words += data_var.size(0) * data_var.size(1)
+
+            ############################
+            # just temporary, for debugging
+            count += 1
+            if count > 100:
+                break
+            ###########################
+
+    if type(model) == Discriminator:
+        return total_loss / total_batches
+    else:
+        return total_loss / total_words
 
 # evaluate `model`'s performance on data from `data_iter`. See above for train_type.
-def eval_epoch(model, data_iter, loss_fn, train_type, pretrain_gen=True):
+def eval_epoch(model, data_iter, loss_fn):
     total_loss = 0.0
     total_words = 0.0
     with torch.no_grad():
         for (data, target) in tqdm(data_iter, desc= " - Evaluation", leave=False):
-            if pretrain_gen:
-                data_var = Variable(data[const.TICK_KEY])
-                target_var = Variable(target[const.TICK_KEY])
-            else:
-                data_var = Variable(data)
-                target_var = Variable(target)
+            data_var = Variable(data)
+            target_var = Variable(target)
 
             if args.cuda and torch.cuda.is_available():
                 data_var, target_var = data_var.cuda(), target_var.cuda()
@@ -234,7 +265,12 @@ def eval_epoch(model, data_iter, loss_fn, train_type, pretrain_gen=True):
         return total_loss / total_words
 
 
-def main(pretrain_dataset, rl_dataset):
+def main(pretrain_dataset, rl_dataset, args):
+    gen_data_path = op.join(TEMP_DATA_DIR, args.dataset, 'generated.data')
+    real_data_path = op.join(TEMP_DATA_DIR, args.dataset, 'real.data')
+    gen_model_cache = op.join(PT_CACHE_DIR, args.dataset, "generator.pt")
+    dscr_model_cache = op.join(PT_CACHE_DIR, args.dataset, "discriminator.pt")
+
     # for keeping track of loss curves so we can plot them later
     pt_gen_train_loss = []
     pt_gen_valid_loss = []
@@ -282,11 +318,11 @@ def main(pretrain_dataset, rl_dataset):
 
         for epoch in range(GEN_PRETRAIN_EPOCHS):
             # pdb.set_trace()
-            train_loss = pretrain_epoch(generator, pt_train_loader, gen_criterion, gen_optimizer, pretrain_gen=True)
+            train_loss = pretrain_epoch(generator, pt_train_loader, gen_criterion, gen_optimizer)
             pt_gen_train_loss.append(train_loss)
             print('::PRETRAIN GEN:: Epoch [%d] Training Loss: %f'% (epoch, train_loss))
 
-            valid_loss = eval_epoch(generator, pt_valid_loader, gen_criterion, pretrain_gen=True)
+            valid_loss = preeval_epoch(generator, pt_valid_loader, gen_criterion)
             pt_gen_valid_loss.append(valid_loss)
             print('::PRETRAIN GEN:: Epoch [%d] Validation Loss: %f'% (epoch, valid_loss))
 
@@ -319,10 +355,10 @@ def main(pretrain_dataset, rl_dataset):
             dscr_criterion = dscr_criterion.cuda()
         for i in range(DSCR_PRETRAIN_DATA_GENS):
             print('Creating real and fake datafiles ...')
-            rl_data_loader = get_subset_dataloader(dataset)
-            create_generated_data_file(generator, len(data_loader), GEN_FILE)
-            create_real_data_file(data_loader, REAL_FILE)
-            dscr_data_iter = DataLoader(DscrDataset(REAL_FILE, GEN_FILE), batch_size=BATCH_SIZE, shuffle=True)
+            rl_data_loader = get_subset_dataloader(rl_dataset)
+            create_generated_data_file(generator, len(rl_data_loader), gen_data_path)
+            create_real_data_file(rl_data_loader, real_data_path)
+            dscr_data_iter = DataLoader(DscrDataset(real_data_path, gen_data_path), batch_size=BATCH_SIZE, shuffle=True)
             for j in range(DSCR_PRETRAIN_EPOCHS):
                 loss = train_epoch(discriminator, dscr_data_iter, dscr_criterion, dscr_optimizer)
                 pt_dscr_loss.append(loss)
@@ -338,14 +374,14 @@ def main(pretrain_dataset, rl_dataset):
 
     data_loader = get_subset_dataloader(dataset)
     # create real data file if it doesn't yet exist
-    if not op.exists(REAL_FILE):
+    if not op.exists(real_data_path):
         print('Creating real data file...')
-        create_real_data_file(data_loader, REAL_FILE)
+        create_real_data_file(data_loader, real_data_path)
 
     # create generated data file if it doesn't yet exist
-    if not op.exists(GEN_FILE):
+    if not op.exists(gen_data_path):
         print('Creating generated data file...')
-        create_generated_data_file(generator, len(data_loader), GEN_FILE)
+        create_generated_data_file(generator, len(data_loader), gen_data_path)
 
     #######################################
     # Adversarial Training 
@@ -421,9 +457,9 @@ def main(pretrain_dataset, rl_dataset):
         total_dscr_loss = 0.0
         for data_gen in range(D_DATA_GENS):
             data_loader = get_subset_dataloader(dataset)
-            create_generated_data_file(generator, len(data_loader), GEN_FILE)
-            create_real_data_file(data_loader, GEN_FILE)
-            dscr_data_iter = DataLoader(DscrDataset(REAL_FILE, GEN_FILE), batch_size=BATCH_SIZE, shuffle=True)
+            create_generated_data_file(generator, len(data_loader), gen_data_path)
+            create_real_data_file(data_loader, gen_data_path)
+            dscr_data_iter = DataLoader(DscrDataset(real_data_path, gen_data_path), batch_size=BATCH_SIZE, shuffle=True)
             for dstep in range(D_STEPS):
                 loss = train_epoch(discriminator, dscr_data_iter, dscr_criterion, dscr_optimizer)
                 total_dscr_loss += loss
@@ -450,10 +486,11 @@ if __name__ == '__main__':
     pretrain_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-mle.h5" % args.dataset)) 
     rl_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-rl.h5" % args.dataset)) 
     print("Done.")
-
     try:
         main(pretrain_dataset, rl_dataset)
-    except (KeyboardInterrupt, ValueError, OSError, RuntimeError, NameError, bdb.BdbQuit):
+    except (TypeError, KeyboardInterrupt, ValueError, OSError, RuntimeError, NameError, RuntimeError, bdb.BdbQuit) as e:
+        pdb.set_trace()
+        print("{}: {}".format(e.__class__, str(e)))
         print("Closing Datasets ...")
         pretrain_dataset.terminate()
         rl_dataset.terminate()

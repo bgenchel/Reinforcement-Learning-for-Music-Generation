@@ -18,25 +18,26 @@ A0 = 21
 C8 = 108
 
 SEQ_LEN = 96 # 96 ticks to one measure
+DTYPE = np.uint8
 
 
 def prepare_mle_hdf5(file_path):
     print(file_path)
     hdf5 = h5py.File(file_path, 'w')
     # choosing int 8 because all these tokens should be less than 256
-    hdf5.create_dataset(const.SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=np.uint8)
-    hdf5.create_dataset(const.CR_SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=np.uint8)
-    hdf5.create_dataset(const.CT_SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=np.uint8)
-    hdf5.create_dataset(const.TARGETS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=np.uint8)
+    hdf5.create_dataset(const.SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=DTYPE)
+    hdf5.create_dataset(const.CR_SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=DTYPE)
+    hdf5.create_dataset(const.CT_SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=DTYPE)
+    hdf5.create_dataset(const.TARGETS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=DTYPE)
     return hdf5
 
 def prepare_rl_hdf5(file_path):
     print(file_path)
     hdf5 = h5py.File(file_path, 'w')
     # choosing int 8 because all these tokens should be less than 256
-    hdf5.create_dataset(const.SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=np.int8)
-    hdf5.create_dataset(const.CR_SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=np.int8)
-    hdf5.create_dataset(const.CT_SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=np.int8)
+    hdf5.create_dataset(const.SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=DTYPE)
+    hdf5.create_dataset(const.CR_SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=DTYPE)
+    hdf5.create_dataset(const.CT_SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=DTYPE)
     return hdf5
 
 def write_to_mle_hdf5(hdf5, seqs, targets, cr_seqs, ct_seqs):
@@ -137,7 +138,7 @@ def main(args):
 
                 full_sequence[const.TICK_KEY].extend(formatted_ticks)
 
-        full_sequence = {k: np.array(v, dtype=np.int8) for k, v in full_sequence.items()} 
+        full_sequence = {k: np.array(v, dtype=DTYPE) for k, v in full_sequence.items()} 
         tick_seqs, tick_targets = get_seqs_and_targets(full_sequence[const.TICK_KEY])
         cr_seqs, cr_targets = get_seqs_and_targets(full_sequence[const.CHORD_ROOT_KEY])
         ct_seqs, ct_targets = get_seqs_and_targets(full_sequence[const.CHORD_TYPE_KEY])
