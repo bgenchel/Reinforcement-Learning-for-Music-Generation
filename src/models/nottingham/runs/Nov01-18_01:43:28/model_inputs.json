@@ -1,6 +1,0 @@
-{
-    "vocab_size": 89,
-    "embed_dim": 32,
-    "hidden_dim": 32,
-    "use_cuda": false
-}
