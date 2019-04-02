@@ -3,6 +3,9 @@ Calculate Rewards by 'rolling out' generated sequences to get an idea of state
 """
 import copy
 import numpy as np
+from tqdm import tqdm
+
+import pdb
 
 class Rollout(object):
     """
@@ -26,8 +29,10 @@ class Rollout(object):
         """
         rewards = []
         batch_size, seq_len = data.size()
+        # for data in tqdm(data_iter, desc=' - Create Real Data File', leave=False):
         for i in range(rollout_num):
-            for l in range(1, seq_len + 1):
+            print("Rollout #%d: " % i)
+            for l in tqdm(range(1, seq_len + 1), desc=' - Rollout for Generator Training'):
                 data_subseqs = data[:, :l]
                 samples = self.rollout_model.sample(batch_size, seq_len, data_subseqs)
                 # samples = self.model.sample(batch_size, seq_len, data_subseqs)

@@ -11,6 +11,7 @@ import random
 import os
 import os.path as op
 import sys
+import traceback
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -57,29 +58,40 @@ if torch.cuda.is_available() and (not args.no_cuda):
     args.cuda = True
 
 # Paths
-ROOT_DIR = str(Path(op.abspath(__file__)).parents[3])
+ROOT_DIR = str(Path(op.abspath(__file__)).parents[2])
 DATA_DIR = op.join(ROOT_DIR, "data", "processed", "%s-hdf5" % args.dataset)
-TEMP_DATA_DIR = op.join(os.getcwd(), "temp_data")
-PT_CACHE_DIR = op.join(os.getcwd(), "pretrained")
+PT_CACHE_DIR = op.join(os.getcwd(), "pretrained", args.dataset)
+if not op.exists(PT_CACHE_DIR):
+    os.makedirs(PT_CACHE_DIR)
+TEMP_DATA_DIR = op.join(os.getcwd(), "temp_data", args.dataset)
+if not op.exists(TEMP_DATA_DIR):
+    os.makedirs(TEMP_DATA_DIR)
+
+gen_model_cache = op.join(PT_CACHE_DIR, 'generator.pt')
+dscr_model_cache = op.join(PT_CACHE_DIR, 'discriminator.pt')
 
 # General Training Paramters
 SEED = 88 # for the randomize, no reason behind this number
 BATCH_SIZE = 64
 GAN_TRAIN_EPOCHS = 200 # number of adversarial training epochs
-NUM_SAMPLES = 5000 # num samples in each data file for training discriminator
+# NUM_SAMPLES = 5000 # num samples in each data file for training discriminator
+NUM_SAMPLES = 500 # num samples in each data file for training discriminator
 VOCAB_SIZE = 89 # 1 tick has how many dims?
 
 # Pretraining Params
 # GEN_PRETRAIN_EPOCHS = 120
-GEN_PRETRAIN_EPOCHS = 10
-DSCR_PRETRAIN_DATA_GENS = 10
-DSCR_PRETRAIN_EPOCHS = 6
+GEN_PRETRAIN_EPOCHS = 50
+DSCR_PRETRAIN_DATA_GENS = 5
+DSCR_PRETRAIN_EPOCHS = 3
 
 # Adversarial Training Params
 NUM_ROLLOUTS = 16
+# NUM_ROLLOUTS = 1
 G_STEPS = 1
 D_DATA_GENS = 4
 D_STEPS = 2
+# D_DATA_GENS = 1
+# D_STEPS = 1
 
 # Generator Model Params
 gen_embed_dim = 64
@@ -98,17 +110,14 @@ dscr_num_classes = 2
 # for nottingham is over 170K samples. Each time we need a new real.data file, we first get
 # a new dataloader using this method, that has a new set of NUM_SAMPLES random samples from the original dataset.
 def get_subset_dataloader(dataset):
-    try:
-        indices = random.sample(range(len(dataset)), NUM_SAMPLES)
-    except ValueError:
-        print("Number of samples to generate exceeds dataset size.")
-
+    print('entered get_subset_dataloader')
+    indices = random.sample(range(len(dataset)), min(len(dataset), NUM_SAMPLES))
     return DataLoader(dataset, batch_size=BATCH_SIZE, sampler=SubsetRandomSampler(indices), drop_last=True)
 
 
 # Generates `num_batches` batches of size BATCH_SIZE from the generator. Stores the data in `output_file`
 def create_generated_data_file(model, num_batches, outpath):
-    pdb.set_trace()
+    print('creating generated data file ...')
     samples = []
     for _ in range(num_batches):
         sample_batch = model.sample(BATCH_SIZE, gen_seq_len).cpu().data.numpy().tolist()
@@ -125,7 +134,7 @@ def create_generated_data_file(model, num_batches, outpath):
 
 # Iterates through `data_iter` and stores all its targets in `output_file`.
 def create_real_data_file(data_iter, output_file):
-    print('inside create_real_data_file')
+    print('creating real data file ...')
     samples = []
     # data_iter = iter(data_iter)
     for data in tqdm(data_iter, desc=' - Create Real Data File', leave=False):
@@ -165,11 +174,10 @@ def pretrain_epoch(model, data_iter, loss_fn, optimizer, pretrain_gen=False):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
         ############################
         # just temporary, for debugging
-        if total_batches > 100:
-            break
+        # if total_batches > 100:
+            # break
         ###########################
 
     if type(model) == Discriminator:
@@ -244,9 +252,9 @@ def eval_epoch(model, data_iter, loss_fn):
     total_loss = 0.0
     total_words = 0.0
     with torch.no_grad():
-        for (data, target) in tqdm(data_iter, desc= " - Evaluation", leave=False):
-            data_var = Variable(data)
-            target_var = Variable(target)
+        for data in tqdm(data_iter, desc= " - Evaluation", leave=False):
+            data_var = Variable(data["sequences"])
+            target_var = Variable(data["targets"])
 
             if args.cuda and torch.cuda.is_available():
                 data_var, target_var = data_var.cuda(), target_var.cuda()
@@ -266,10 +274,13 @@ def eval_epoch(model, data_iter, loss_fn):
 
 
 def main(pretrain_dataset, rl_dataset, args):
-    gen_data_path = op.join(TEMP_DATA_DIR, args.dataset, 'generated.data')
-    real_data_path = op.join(TEMP_DATA_DIR, args.dataset, 'real.data')
-    gen_model_cache = op.join(PT_CACHE_DIR, args.dataset, "generator.pt")
-    dscr_model_cache = op.join(PT_CACHE_DIR, args.dataset, "discriminator.pt")
+    ##############################################################################
+    # Setup
+    ##############################################################################
+    gen_data_path = op.join(TEMP_DATA_DIR, "generated.data")
+    real_data_path = op.join(TEMP_DATA_DIR, "real.data")
+    gen_model_cache = op.join(PT_CACHE_DIR, "generator.pt")
+    dscr_model_cache = op.join(PT_CACHE_DIR, "discriminator.pt")
 
     # for keeping track of loss curves so we can plot them later
     pt_gen_train_loss = []
@@ -293,15 +304,16 @@ def main(pretrain_dataset, rl_dataset, args):
     if args.cuda and torch.cuda.is_available():
         generator = generator.cuda()
         discriminator = discriminator.cuda()
+    ##############################################################################
 
-    #######################################
+    ##############################################################################
     # Pre-Training
-    #######################################
+    ##############################################################################
     # Pretrain and save Generator using MLE, Load the Pretrained generator and display training stats 
     # if it already exists.
-    if not args.force_pretrain and op.exists(PT_GEN_MODEL_FILE):
+    if not args.force_pretrain and op.exists(gen_model_cache):
         print('Loading Pretrained Generator ...')
-        checkpoint = torch.load(PT_GEN_MODEL_FILE)
+        checkpoint = torch.load(gen_model_cache)
         generator.load_state_dict(checkpoint['state_dict'])
         print('::INFO:: DateTime - %s.' % checkpoint['datetime'])
         print('::INFO:: Model was trained for %d epochs.' % checkpoint['epochs'])
@@ -317,7 +329,6 @@ def main(pretrain_dataset, rl_dataset, args):
             gen_criterion = gen_criterion.cuda()
 
         for epoch in range(GEN_PRETRAIN_EPOCHS):
-            # pdb.set_trace()
             train_loss = pretrain_epoch(generator, pt_train_loader, gen_criterion, gen_optimizer)
             pt_gen_train_loss.append(train_loss)
             print('::PRETRAIN GEN:: Epoch [%d] Training Loss: %f'% (epoch, train_loss))
@@ -333,15 +344,16 @@ def main(pretrain_dataset, rl_dataset, args):
                             'epochs': epoch + 1,
                             'train_loss': train_loss,
                             'valid_loss': valid_loss,
-                            'datetime': datetime.now().isoformat()}, PT_GEN_MODEL_FILE)
+                            'datetime': datetime.now().isoformat()}, gen_model_cache)
+
         torch.save({'train_losses': pt_gen_train_loss,
-                    'valid_losses': pt_gen_valid_loss}, op.join(PT_DIR, 'generator_losses.pt'))
+                    'valid_losses': pt_gen_valid_loss}, op.join(PT_CACHE_DIR, 'generator_losses.pt'))
 
     # Pretrain Discriminator on real data and data from the pretrained generator. If a pretrained Discriminator
     # already exists, load it and display its stats
-    if not args.force_pretrain and op.exists(PT_DSCR_MODEL_FILE):
+    if not args.force_pretrain and op.exists(dscr_model_cache):
         print("Loading Pretrained Discriminator ...")
-        checkpoint = torch.load(PT_DSCR_MODEL_FILE)
+        checkpoint = torch.load(dscr_model_cache)
         discriminator.load_state_dict(checkpoint['state_dict'])
         print('::INFO:: DateTime - %s.' % checkpoint['datetime'])
         print('::INFO:: Model was trained on %d data generations.' % checkpoint['data_gens'])
@@ -354,7 +366,7 @@ def main(pretrain_dataset, rl_dataset, args):
         if args.cuda and torch.cuda.is_available():
             dscr_criterion = dscr_criterion.cuda()
         for i in range(DSCR_PRETRAIN_DATA_GENS):
-            print('Creating real and fake datafiles ...')
+            # print('Creating real and fake datafiles ...')
             rl_data_loader = get_subset_dataloader(rl_dataset)
             create_generated_data_file(generator, len(rl_data_loader), gen_data_path)
             create_real_data_file(rl_data_loader, real_data_path)
@@ -369,10 +381,12 @@ def main(pretrain_dataset, rl_dataset, args):
                     'data_gens': DSCR_PRETRAIN_DATA_GENS,
                     'epochs': DSCR_PRETRAIN_EPOCHS,
                     'loss': loss,
-                    'datetime': datetime.now().isoformat()}, PT_DSCR_MODEL_FILE)
-        torch.save({'losses': pt_dscr_loss}, op.join(PT_DIR, 'discriminator_losses.pt'))
+                    'datetime': datetime.now().isoformat()}, dscr_model_cache)
 
-    data_loader = get_subset_dataloader(dataset)
+        torch.save({'losses': pt_dscr_loss}, op.join(PT_CACHE_DIR, 'discriminator_losses.pt'))
+    ##############################################################################
+
+    data_loader = get_subset_dataloader(rl_dataset)
     # create real data file if it doesn't yet exist
     if not op.exists(real_data_path):
         print('Creating real data file...')
@@ -383,9 +397,10 @@ def main(pretrain_dataset, rl_dataset, args):
         print('Creating generated data file...')
         create_generated_data_file(generator, len(data_loader), gen_data_path)
 
-    #######################################
+    ##############################################################################
     # Adversarial Training 
-    #######################################
+    ##############################################################################
+
     print('#'*100)
     print('Start Adversarial Training...\n')
     # Instantiate the Rollout. Give it the generator so it can make its own internal copy of it 
@@ -456,7 +471,7 @@ def main(pretrain_dataset, rl_dataset, args):
         # Train the Discriminator for `D_STEPS` each on `D_DATA_GENS` sets of generated and sampled real data
         total_dscr_loss = 0.0
         for data_gen in range(D_DATA_GENS):
-            data_loader = get_subset_dataloader(dataset)
+            data_loader = get_subset_dataloader(rl_dataset)
             create_generated_data_file(generator, len(data_loader), gen_data_path)
             create_real_data_file(data_loader, gen_data_path)
             dscr_data_iter = DataLoader(DscrDataset(real_data_path, gen_data_path), batch_size=BATCH_SIZE, shuffle=True)
@@ -480,6 +495,7 @@ def main(pretrain_dataset, rl_dataset, args):
     torch.save(generator.state_dict(), op.join(run_dir, 'generator_state.pt'))
 
     torch.save({'adv_gen_losses': adv_gen_loss, 'adv_dscr_losses': adv_dscr_loss}, op.join(run_dir, 'losses.pt'))
+    ##############################################################################
 
 if __name__ == '__main__':
     print("Loading Data ...")
@@ -487,10 +503,9 @@ if __name__ == '__main__':
     rl_dataset = HDF5Dataset(op.join(DATA_DIR, "%s-dataset-rl.h5" % args.dataset)) 
     print("Done.")
     try:
-        main(pretrain_dataset, rl_dataset)
+        main(pretrain_dataset, rl_dataset, args)
     except (TypeError, KeyboardInterrupt, ValueError, OSError, RuntimeError, NameError, RuntimeError, bdb.BdbQuit) as e:
-        pdb.set_trace()
-        print("{}: {}".format(e.__class__, str(e)))
+        print(traceback.format_exc())
         print("Closing Datasets ...")
         pretrain_dataset.terminate()
         rl_dataset.terminate()

@@ -21,6 +21,7 @@ class Discriminator(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.fc2 = nn.Linear(sum(num_filters), output_dim)
         self.softmax = nn.LogSoftmax(dim=-1)
+        self.sigmoid = nn.Sigmoid()
         self.init_parameters()
 
     def init_parameters(self):
@@ -41,6 +42,6 @@ class Discriminator(nn.Module):
         pools = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs]
         pred = torch.cat(pools, 1) # batch_size * num_filters_sum
         pred = self.fc1(pred)
-        pred = F.sigmoid(pred) * F.relu(pred) + (1. - F.sigmoid(pred)) * pred
+        pred = self.sigmoid(pred) * F.relu(pred) + (1. - self.sigmoid(pred)) * pred
         pred = self.softmax(self.fc2(self.dropout(pred)))
         return pred
