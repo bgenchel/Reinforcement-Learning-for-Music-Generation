@@ -421,6 +421,10 @@ def main(pretrain_dataset, rl_dataset, args):
     if args.cuda and torch.cuda.is_available():
         dscr_criterion = dscr_criterion.cuda()
 
+    run_dir = op.join("runs", datetime.now().strftime('%b%d-%y_%H:%M:%S'))
+    if not op.exists(run_dir):
+        os.makedirs(run_dir)
+
     # Train Adversarially for `GAN_TRAIN_EPOCHS` epochs
     for epoch in range(GAN_TRAIN_EPOCHS):
         print("#"*30 + "\nAdversarial Epoch [%d]\n" % epoch + "#"*30)
@@ -467,6 +471,17 @@ def main(pretrain_dataset, rl_dataset, args):
             rollout.update_params()
 
         adv_gen_loss.append(total_gen_loss / G_STEPS)
+        # Save the model and parameters needed to reinstantiate it at the end of training 
+        if (total_gen_loss / G_STEPS) < min_loss:
+            model_inputs = {'vocab_size': VOCAB_SIZE,
+                            'embed_dim': gen_embed_dim,
+                            'hidden_dim': gen_hidden_dim,
+                            'use_cuda': args.cuda}
+
+            json.dump(model_inputs, open(op.join(run_dir, 'model_inputs.json'), 'w'), indent=4)
+            torch.save(generator.state_dict(), op.join(run_dir, 'generator_state.pt'))
+
+            torch.save({'adv_gen_losses': adv_gen_loss, 'adv_dscr_losses': adv_dscr_loss}, op.join(run_dir, 'losses.pt'))
         
         # Train the Discriminator for `D_STEPS` each on `D_DATA_GENS` sets of generated and sampled real data
         total_dscr_loss = 0.0
@@ -481,20 +496,6 @@ def main(pretrain_dataset, rl_dataset, args):
                 print('Adv Epoch [%d], Dscr Gen [%d], Dscr Step [%d] - Loss: %f' % (epoch, data_gen, dstep, loss))
         adv_dscr_loss.append(total_dscr_loss / (D_DATA_GENS * D_STEPS))
 
-    run_dir = op.join("runs", datetime.now().strftime('%b%d-%y_%H:%M:%S'))
-    if not op.exists(run_dir):
-        os.makedirs(run_dir)
-
-    # Save the model and parameters needed to reinstantiate it at the end of training 
-    model_inputs = {'vocab_size': VOCAB_SIZE,
-                    'embed_dim': gen_embed_dim,
-                    'hidden_dim': gen_hidden_dim,
-                    'use_cuda': args.cuda}
-
-    json.dump(model_inputs, open(op.join(run_dir, 'model_inputs.json'), 'w'), indent=4)
-    torch.save(generator.state_dict(), op.join(run_dir, 'generator_state.pt'))
-
-    torch.save({'adv_gen_losses': adv_gen_loss, 'adv_dscr_losses': adv_dscr_loss}, op.join(run_dir, 'losses.pt'))
     ##############################################################################
 
 if __name__ == '__main__':
