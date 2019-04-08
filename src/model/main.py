@@ -55,7 +55,11 @@ args = parser.parse_args()
 args.cuda = False
 if torch.cuda.is_available() and (not args.no_cuda):
     torch.cuda.set_device(args.cuda_device)
+    device = torch.device("cuda:%d" % args.cuda_device)
     args.cuda = True
+else:
+    torch.set_device("cpu")
+    device = torch.device("cpu")
 
 # Paths
 ROOT_DIR = str(Path(op.abspath(__file__)).parents[2])
@@ -156,11 +160,14 @@ def pretrain_epoch(model, data_iter, loss_fn, optimizer, pretrain_gen=False):
     total_words = 0.0
     total_batches = 0.0
     for data in tqdm(data_iter, desc=' - Training', leave=False):
-        data_var = Variable(data["sequences"])
-        target_var = Variable(data['targets'])
+        data_var = data["sequences"]
+        target_var = data['targets']
 
         if args.cuda and torch.cuda.is_available():
             data_var, target_var = data_var.cuda(), target_var.cuda()
+
+        data_var = data_var.to(device)
+        target_var = target_var.to(device)
 
         target_var = target_var.contiguous().view(-1)
         pred = model.forward(data_var)
@@ -193,9 +200,11 @@ def train_epoch(model, data_iter, loss_fn, optimizer):
         data_var = Variable(data)
         target_var = Variable(target)
 
-        # pdb.set_trace()
         if args.cuda and torch.cuda.is_available():
             data_var, target_var = data_var.cuda(), target_var.cuda()
+        
+        data_var = data_var.to(device)
+        target_var = target_var.to(device)
 
         target_var = target_var.contiguous().view(-1)
         pred = model.forward(data_var)
@@ -226,6 +235,9 @@ def preeval_epoch(model, data_iter, loss_fn):
 
             if args.cuda and torch.cuda.is_available():
                 data_var, target_var = data_var.cuda(), target_var.cuda()
+
+            data_var = data_var.to(device)
+            target_var = target_var.to(device)
 
             target_var = target_var.contiguous().view(-1)
             pred = model.forward(data_var)
@@ -258,6 +270,9 @@ def eval_epoch(model, data_iter, loss_fn):
 
             if args.cuda and torch.cuda.is_available():
                 data_var, target_var = data_var.cuda(), target_var.cuda()
+
+            data_var = data_var.to(device)
+            target_var = target_var.to(device)
 
             target_var = target_var.contiguous().view(-1)
             pred = model.forward(data_var)
@@ -299,6 +314,13 @@ def main(pretrain_dataset, rl_dataset, args):
     # Define Networks
     generator = Generator(VOCAB_SIZE, gen_embed_dim, gen_hidden_dim, args.cuda)
     discriminator = Discriminator(VOCAB_SIZE, dscr_embed_dim, dscr_filter_sizes, dscr_num_filters, dscr_num_classes, dscr_dropout)
+    if torch.cuda.device_count() > 1:
+        print("Using", torch.cuda.device_count(), "GPUs.")
+        generator = nn.DataParallel(generator)
+        discriminator = nn.DataParallel(discriminator)
+    generator.to(device)
+    discriminator.to(device)
+    
 
     # set CUDA
     if args.cuda and torch.cuda.is_available():
@@ -405,7 +427,7 @@ def main(pretrain_dataset, rl_dataset, args):
     print('Start Adversarial Training...\n')
     # Instantiate the Rollout. Give it the generator so it can make its own internal copy of it 
     # which will only update `update_rate` of the full generator's update at each step
-    rollout = Rollout(generator, update_rate=0.8)
+    rollout = Rollout(generator, update_rate=0.8, device=device)
     
     # Instantiate GANLoss and new optimizer for the generator with new learning rate.
     gen_gan_loss = GANLoss(use_cuda=args.cuda)
@@ -421,13 +443,13 @@ def main(pretrain_dataset, rl_dataset, args):
     if args.cuda and torch.cuda.is_available():
         dscr_criterion = dscr_criterion.cuda()
 
-    run_dir = op.join("runs", datetime.now().strftime('%b%d-%y_%H:%M:%S'))
+    run_dir = op.join("runs", args.dataset, datetime.now().strftime('%b%d-%y_%H:%M:%S'))
     if not op.exists(run_dir):
         os.makedirs(run_dir)
 
     # Train Adversarially for `GAN_TRAIN_EPOCHS` epochs
     for epoch in range(GAN_TRAIN_EPOCHS):
-        print("#"*30 + "\nAdversarial Epoch [%d]\n" % epoch + "#"*30)
+        print("#" * 30 + "\nAdversarial Epoch [%d]\n" % epoch + "#"*30)
         total_gen_loss = 0.0
         ## Train the generator for G_STEPS
         for gstep in range(G_STEPS):

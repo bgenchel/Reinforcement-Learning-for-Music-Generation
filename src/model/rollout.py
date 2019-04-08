@@ -4,17 +4,36 @@ Calculate Rewards by 'rolling out' generated sequences to get an idea of state
 import copy
 import numpy as np
 from tqdm import tqdm
+import torch.multiprocessing as mp
+from collections import deque
 
 import pdb
+
+NUM_PROCESSES = 4
 
 class Rollout(object):
     """
     Monte-Carlo Rollout Policy
     """
-    def __init__(self, model, update_rate):
+    def __init__(self, model, update_rate, device):
         self.model = model
         self.rollout_model = copy.deepcopy(model)
         self.update_rate = update_rate
+        self.device = device # something something data parallel
+
+    def _get_reward_process(self, rollout_num, data_subseqs, discriminator, seq_len, rewards):
+        samples = self.rollout_model.sample(batch_size, seq_len, data_subseqs)
+        # samples = self.model.sample(batch_size, seq_len, data_subseqs)
+        if torch.cuda.is_available():
+            samples = samples.cuda()
+        samples.to(self.device)
+
+        pred = discriminator(samples)
+        pred = pred.cpu().data[:, 1].numpy() # why cpu?
+        if rollout_num == 0:
+            rewards.append(pred)
+        else:
+            rewards[l - 1] += pred
 
     def get_reward(self, data, rollout_num, discriminator):
         """
@@ -29,19 +48,23 @@ class Rollout(object):
         """
         rewards = []
         batch_size, seq_len = data.size()
+        discriminator.share_memory() # required for multiprocessing
+        processes = deque()
+        num_procs = 0
         # for data in tqdm(data_iter, desc=' - Create Real Data File', leave=False):
         for i in range(rollout_num):
             print("Rollout #%d: " % i)
             for l in tqdm(range(1, seq_len + 1), desc=' - Rollout for Generator Training'):
                 data_subseqs = data[:, :l]
-                samples = self.rollout_model.sample(batch_size, seq_len, data_subseqs)
-                # samples = self.model.sample(batch_size, seq_len, data_subseqs)
-                pred = discriminator(samples)
-                pred = pred.cpu().data[:, 1].numpy() # why cpu?
-                if i == 0:
-                    rewards.append(pred)
-                else:
-                    rewards[l-1] += pred
+                if num_procs > NUM_PROCESSES:
+                    processes[0].join()
+                    processes.popleft()
+                p = mp.Process(target=self._get_reward_process, args=(i, data_subseqs, discriminator, seq_len, rewards))
+                p.start()
+                processes.append(p)
+                num_procs += 1
+        for p in processes:
+            p.join()
 
         rewards = np.transpose(np.array(rewards)) / float(rollout_num)
         return rewards
