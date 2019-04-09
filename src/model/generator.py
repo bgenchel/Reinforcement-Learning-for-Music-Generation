@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+import pdb
+
 class Generator(nn.Module):
     """
     Simple 1-layer LSTM-RNN for sequence generation
@@ -66,6 +68,7 @@ class Generator(nn.Module):
         If no seed is provided, it begins with a single time step of length 0.
         If a seed is provided, it generates seq_len - seed_len samples.
         """
+        # pdb.set_trace()
         samples = []
         hidden, cell = self.init_hidden_and_cell(batch_size)
         if seed is None:
@@ -79,7 +82,7 @@ class Generator(nn.Module):
                 samples.append(inpt)
         else:
             seed_len = seed.size(1)
-            seed_symbols = seed.chunk(seed.size(1), dim=1) # each element becomes its own tensor
+            seed_symbols = seed.chunk(seed_len, dim=1) # each element becomes its own tensor
             samples.extend(seed_symbols)
             # run through the seed to set the network state
             for i in range(seed_len):

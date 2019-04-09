@@ -31,12 +31,8 @@ class GANLoss(nn.Module):
         one_hot = Variable(one_hot.type(torch.ByteTensor)) # sets the type, so it can be used in masked_select
         if self.use_cuda and torch.cuda.is_available():
             one_hot = one_hot.cuda()
-        # import pdb
-        # pdb.set_trace()
         loss = torch.masked_select(probs, one_hot)
         # loss = loss * rewards # why does a greater rewards = greater loss? This should be opposite the case.
         # loss = -torch.sum(loss)
-        # import pdb
-        # pdb.set_trace()
         loss = -torch.dot(loss, rewards)
         return loss
