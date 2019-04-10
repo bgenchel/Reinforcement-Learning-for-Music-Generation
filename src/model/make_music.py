@@ -75,7 +75,7 @@ def sequence_to_midi(path, sequence):
             pr[sequence[i] + A0, i] = 1
 
     # Convert piano roll into MIDI file
-    pm = piano_roll_to_pretty_midi(pr, fs=1 / 0.14)
+    pm = piano_roll_to_pretty_midi(pr, fs=100)
     pm.write(path)
 
 
