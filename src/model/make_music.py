@@ -14,8 +14,12 @@ import torch
 from generator import Generator
 from pathlib import Path
 
+import pdb
+
 sys.path.append(str(Path(op.abspath(__file__)).parents[1]))
 from utils.reverse_pianoroll import piano_roll_to_pretty_midi
+
+A0 = 21
 
 NUM_GENS = 100
 SEQ_LEN = 384
@@ -33,6 +37,8 @@ def main():
     rl_gen.eval()
     # output
     rl_outdir = op.join(os.getcwd(), 'generated', 'charlie_parker', 'pt')
+    if not op.exists(rl_outdir):
+        os.makedirs(rl_outdir)
 
     # load saved model files
     mle_model_dir = op.join(os.getcwd(),'pretrained', 'charlie_parker')
@@ -43,27 +49,30 @@ def main():
     mle_gen.eval()
     # output
     mle_outdir = op.join(os.getcwd(), 'generated', 'charlie_parker', 'ft')
+    if not op.exists(mle_outdir):
+        os.makedirs(mle_outdir)
 
     data_dir = op.join(str(Path(op.abspath(__file__)).parents[2]), 'data', 'processed', 'charlie_parker-hdf5')
     dataset = h5py.File(op.join(data_dir, 'charlie_parker-dataset-rl.h5'), 'r')
 
     for i in range(NUM_GENS):
-        # import pdb
-        # pdb.set_trace()
         base_seq = dataset['sequences'][random.choice(range(len(dataset['sequences'])))]
         seed = torch.LongTensor(base_seq[:SEED_LEN]).unsqueeze(0)
         # fully trained
         samples = rl_gen.sample(1, SEQ_LEN, seed=seed)
-        sequence_to_midi(op.join(rl_outdir, '%d.mid' % i), samples)
+        sequence_to_midi(op.join(rl_outdir, '%d.mid' % i), samples.squeeze(0))
         # pre trained
         samples = mle_gen.sample(1, SEQ_LEN, seed=seed)
-        sequence_to_midi(op.join(mle_outdir, '%d.mid' % i), samples)
+        sequence_to_midi(op.join(mle_outdir, '%d.mid' % i), samples.squeeze(0))
 
 def sequence_to_midi(path, sequence):
     # Convert tokens into a piano roll
     pr = np.zeros([128, len(sequence)])
     for i in range(len(sequence)):
-        pr[sequence[i], i] = 1
+        if sequence[i] == 0:
+            continue
+        else:
+            pr[sequence[i] + A0, i] = 1
 
     # Convert piano roll into MIDI file
     pm = piano_roll_to_pretty_midi(pr, fs=1 / 0.14)
