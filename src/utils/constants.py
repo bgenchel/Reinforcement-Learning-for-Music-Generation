@@ -1,12 +1,14 @@
 """
 Constant Values
 """
+#####################################################################
 # Strings
+#####################################################################
 TICK_KEY = "ticks"
 SEQS_KEY = "sequences"
+TARGETS_KEY = "targets"
 CR_SEQS_KEY = "chord_root_sequences"
 CT_SEQS_KEY = "chord_type_sequences"
-TARGETS_KEY = "targets"
 
 ### From Explicitly Conditioning Melody Paper
 PITCH_KEY = "pitch_numbers"
@@ -20,23 +22,71 @@ NXT_CHORD_ROOT_KEY = "next_harmony_root"
 NXT_CHORD_PC_KEY = "next_harmony_pitch_classes"
 BARPOS_KEY = "bar_positions"
 
+#####################################################################
 # Model Params
+#####################################################################
+# Dims 
+VOCAB_SIZE = 89 # 1 tick has how many dims?
+CHORD_ROOT_DIM = 12
+CHORD_ROOT_EMBED_DIM = 2
+CHORD_PC_DIM = 12
+CHORD_PC_EMBED_DIM = 4
+
+# Other
+NUM_RNN_LAYERS = 2
+TICKS_PER_MEASURE = 96
+SEED = 88 # for the randomize, no reason behind this number
+
+# Generator Model Params
+GEN_EMBED_DIM = 64
+GEN_HIDDEN_DIM = 128 # ORIGINALLY 64
+GEN_SEQ_LEN = TICKS_PER_MEASURE * 4 # GENERATE 4 BARS
+
+# DISCRIMINATOR MODEL PARAMETERS
+DSCR_EMBED_DIM = 128
+DSCR_NUM_FILTERS = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
+DSCR_FILTER_SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
+DSCR_DROPOUT = 0.75
+DSCR_NUM_CLASSES = 2
+
+### From Explicitly Conditioning Melody Paper
 PITCH_DIM = 89
 DUR_DIM = 19
 CHORD_DIM = 24
-CHORD_ROOT_DIM = 12
-CHORD_PC_DIM = 12
 BARPOS_DIM = 96
 PITCH_EMBED_DIM = 8
 DUR_EMBED_DIM = 4
-CHORD_ROOT_EMBED_DIM = 2
-CHORD_PC_EMBED_DIM = 4
 CHORD_EMBED_DIM = 8
 BARPOS_EMBED_DIM = 8
-NUM_RNN_LAYERS = 2
-TICKS_PER_MEASURE = 96
 
+#####################################################################
+# General Training Paramters
+#####################################################################
+BATCH_SIZE = 64
+GAN_TRAIN_EPOCHS = 200 # number of adversarial training epochs
+# NUM_SAMPLES = 5000 # num samples in each data file for training discriminator
+NUM_TRAIN_SAMPLES = 500 # num samples in each data file for training discriminator
+NUM_EVAL_SAMPLES = 100
+
+# Pretraining Params
+# GEN_PRETRAIN_EPOCHS = 120
+# GEN_PRETRAIN_EPOCHS = 50
+GEN_PRETRAIN_EPOCHS = 1
+DSCR_PRETRAIN_DATA_GENS = 5
+DSCR_PRETRAIN_EPOCHS = 3
+
+# Adversarial Training Params
+NUM_ROLLOUTS = 16
+# NUM_ROLLOUTS = 1
+G_STEPS = 1
+D_DATA_GENS = 4
+D_STEPS = 2
+# D_DATA_GENS = 1
+# D_STEPS = 1
+
+#####################################################################
 # Dictionaries
+#####################################################################
 NOTES_MAP = {'rest': 88, 'B#': 0, 'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 
              'Eb': 3, 'E': 4, 'Fb': 4, 'E#': 5, 'F': 5, 'F#': 6, 'Gb': 6, 
              'G': 7, 'G#': 8, 'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11, 'Cb': 11}
