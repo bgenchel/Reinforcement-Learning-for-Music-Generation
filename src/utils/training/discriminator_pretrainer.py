@@ -16,7 +16,7 @@ sys.path.append(str(Path(op.abspath(__file__)).parents[2]))
 import utils.constants as const
 
 
-class DiscriminatorTrainer:
+class DiscriminatorPretrainer:
 
     def __init__(self, discriminator, dataset, cache_dir, temp_data_dir, device, args):
         self.discriminator = discriminator
