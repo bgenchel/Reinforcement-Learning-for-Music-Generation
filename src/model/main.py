@@ -9,8 +9,6 @@ import os
 import os.path as op
 import traceback
 import torch
-import torch.multiprocessing as mp
-import torch.nn as nn
 from pathlib import Path
 # local
 from generator import Generator
@@ -21,8 +19,6 @@ from utils.data.dataloaders import SplitDataLoader
 from utils.training import GeneratorPretrainer, DiscriminatorPretrainer, AdversarialRLTrainer
 
 parser = argparse.ArgumentParser(description="Training Parameter")
-parser.add_argument('-tt', '--train_type', choices=("full_sequence", "next_step"), 
-                    default="full_sequence", help="how to train the network")
 parser.add_argument('-glr', '--gen_learning_rate', default=1e-3, type=float, help="learning rate for generator")
 parser.add_argument('-aglr', '--adv_gen_learning_rate', default=1e-3, type=float, 
                     help="learning rate for generator during adversarial training")
@@ -30,7 +26,11 @@ parser.add_argument('-dlr', '--dscr_learning_rate', default=1e-3, type=float, he
 parser.add_argument('-adlr', '--adv_dscr_learning_rate', default=1e-3, type=float, 
                     help=" adversarial learning rate for discriminator")
 parser.add_argument('-fpt', '--force_pretrain', default=False, action='store_true', 
-                    help="force pretraining of generator and discriminator, instead of loading from cache.")
+                    help="force pretraining of both generator and discriminator, instead of loading from cache.")
+parser.add_argument('-fpg', '--force_pretrain_gen', default=False, action='store_true', 
+                    help="force pretraining of generator, instead of loading from cache.")
+parser.add_argument('-fpd', '--force_pretrain_dscr', default=False, action='store_true', 
+                    help="force pretraining of discriminator, instead of loading from cache.")
 parser.add_argument('-nc', '--no_cuda', action='store_true', help="don't use CUDA, even if it is available.")
 parser.add_argument('-cd', '--cuda_device', default=0, type=int, help="Which GPU to use")
 parser.add_argument('-d', '--dataset', choices=("charlie_parker", "bebop", "nottingham"), type=str, 
@@ -74,7 +74,7 @@ def main(pretrain_dataset, rl_dataset, args):
     pt_train_loader, pt_valid_loader = SplitDataLoader(pretrain_dataset, batch_size=const.BATCH_SIZE, drop_last=True).split()
 
     # Define Networks
-    generator = Generator(const.VOCAB_SIZE, const.GEN_EMBED_DIM, const.GEN_HIDDEN_DIM, args.cuda)
+    generator = Generator(const.VOCAB_SIZE, const.GEN_EMBED_DIM, const.GEN_HIDDEN_DIM, device, args.cuda)
     discriminator = Discriminator(const.VOCAB_SIZE, const.DSCR_EMBED_DIM, const.DSCR_FILTER_SIZES, 
                                   const.DSCR_NUM_FILTERS, const.DSCR_NUM_CLASSES, const.DSCR_DROPOUT)
 
@@ -96,7 +96,10 @@ def main(pretrain_dataset, rl_dataset, args):
     ##############################################################################
     # Pretrain and save Generator using MLE, Load the Pretrained generator and display training stats 
     # if it already exists.
-    if not args.force_pretrain and op.exists(op.join(PT_CACHE_DIR, 'generator.pt')):
+    print('#' * 80)
+    print('Generator Pretraining')
+    print('#' * 80)
+    if (not (args.force_pretrain or args.force_pretrain_gen)) and op.exists(GEN_MODEL_CACHE):
         print('Loading Pretrained Generator ...')
         checkpoint = torch.load(GEN_MODEL_CACHE)
         generator.load_state_dict(checkpoint['state_dict'])
@@ -105,15 +108,18 @@ def main(pretrain_dataset, rl_dataset, args):
         print('::INFO:: Final Training Loss - %.5f' % checkpoint['train_loss'])
         print('::INFO:: Final Validation Loss - %.5f' % checkpoint['valid_loss'])
     else:
-        print('Pretraining Generator with MLE ...')
-        GeneratorPretrainer(generator, pt_train_loader, pt_valid_loader, PT_CACHE_DIR, device, args).train()
+        try:
+            print('Pretraining Generator with MLE ...')
+            GeneratorPretrainer(generator, pt_train_loader, pt_valid_loader, PT_CACHE_DIR, device, args).train()
+        except KeyboardInterrupt:
+            print('Stopped Generator Pretraining Early.')
 
     # Pretrain Discriminator on real data and data from the pretrained generator. If a pretrained Discriminator
     # already exists, load it and display its stats
-    print('#' * 100)
+    print('#' * 80)
     print('Discriminator Pretraining')
-    print('#' * 100)
-    if not args.force_pretrain and op.exists(DSCR_MODEL_CACHE):
+    print('#' * 80)
+    if (not (args.force_pretrain or args.force_pretrain_dscr)) and op.exists(DSCR_MODEL_CACHE):
         print("Loading Pretrained Discriminator ...")
         checkpoint = torch.load(DSCR_MODEL_CACHE)
         discriminator.load_state_dict(checkpoint['state_dict'])
@@ -123,27 +129,20 @@ def main(pretrain_dataset, rl_dataset, args):
         print('::INFO:: Final Loss - %.5f' % checkpoint['loss'])
     else:
         print('Pretraining Discriminator ...')
-        DiscriminatorPretrainer(discriminator, rl_dataset, PT_CACHE_DIR, TEMP_DATA_DIR, device, args).train(generator)
+        try:
+            DiscriminatorPretrainer(discriminator, rl_dataset, PT_CACHE_DIR, TEMP_DATA_DIR, device, args).train(generator)
+        except KeyboardInterrupt:
+            print('Stopped Discriminator Pretraining Early.')
     ##############################################################################
-
-    # data_loader = get_subset_dataloader(rl_dataset)
-    # # create real data file if it doesn't yet exist
-    # if not op.exists(REAL_DATA_PATH):
-    #     print('Creating real data file...')
-    #     create_real_data_file(data_loader, REAL_DATA_PATH)
-
-    # # create generated data file if it doesn't yet exist
-    # if not op.exists(GEN_DATA_PATH):
-    #     print('Creating generated data file...')
-    #     create_generated_data_file(generator, len(data_loader), GEN_DATA_PATH)
 
     ##############################################################################
     # Adversarial Training 
     ##############################################################################
-    print('#' * 100)
+    print('#' * 80)
     print('Adversarial Training')
-    print('#' * 100)
+    print('#' * 80)
     AdversarialRLTrainer(generator, discriminator, rl_dataset, TEMP_DATA_DIR, pt_valid_loader, device, args).train()
+    ##############################################################################
 
 
 if __name__ == '__main__':

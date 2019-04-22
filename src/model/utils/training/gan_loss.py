@@ -1,6 +1,8 @@
+import pdb
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+
 
 class GANLoss(nn.Module):
     """ 
@@ -28,7 +30,7 @@ class GANLoss(nn.Module):
             indices = indices.cuda()
         # write 1 into all positions specified by targets in the 1st dim
         one_hot.scatter_(1, indices, 1) 
-        one_hot = Variable(one_hot.type(torch.ByteTensor)) # sets the type, so it can be used in masked_select
+        one_hot = Variable(one_hot.type(torch.ByteTensor))  # sets the type, so it can be used in masked_select
         if self.use_cuda and torch.cuda.is_available():
             one_hot = one_hot.cuda()
         loss = torch.masked_select(probs, one_hot)

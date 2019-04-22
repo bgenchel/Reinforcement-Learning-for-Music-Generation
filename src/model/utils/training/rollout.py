@@ -3,6 +3,7 @@ Calculate Rewards by 'rolling out' generated sequences to get an idea of state
 """
 import copy
 import numpy as np
+import pdb
 import torch
 import torch.multiprocessing as mp
 from collections import deque
@@ -24,11 +25,13 @@ class Rollout(object):
         self.update_rate = update_rate
         self.device = device  # something something data parallel
 
-    def get_rewards(self, data, rollout_num, discriminator):
+    def get_rewards(self, data, chord_roots, chord_types, num_rollouts, discriminator):
         """
         args:
             data: input data (batch_size, seq_len)
-            rollout_num: roll-out number
+            chord_roots: input data (batch_size, seq_len)
+            chord_types: input data (batch_size, seq_len)
+            rollout_num: number of roll-outs
             discriminator: discriminator generator
 
             For `rollout_num` iterations, rollout the sequence from each timestep in order to get an idea of the
@@ -42,13 +45,16 @@ class Rollout(object):
 
         rewards = []
         batch_size, seq_len = data.size()
-        for rn in range(rollout_num):
+        # ---- debugging ----
+        # return np.ones(data.shape) * 0.5
+        # -------------------
+        for rn in range(num_rollouts):
             print("Rollout #%d: " % rn)
             args_list = []
             for ss_idx in range(1, seq_len + 1):
                 # Add process arguments
                 data_subseqs = data[:, :ss_idx]
-                args_list.append((ss_idx, data_subseqs, discriminator, batch_size, seq_len))
+                args_list.append((ss_idx, discriminator, batch_size, seq_len, data_subseqs, chord_roots, chord_types))
 
             results = pool.imap(self._get_reward_process, args_list, chunksize=20)
             for (ss_idx, pred) in tqdm(results, desc=' - Rollout for Generator Training'):
@@ -57,19 +63,17 @@ class Rollout(object):
                 else:
                     rewards[ss_idx - 1] += pred
 
-        rewards = np.transpose(np.array(rewards)) / float(rollout_num)
+        rewards = np.transpose(np.array(rewards)) / float(num_rollouts)
         return rewards
 
     def _get_reward_process(self, args):
-        # print(args)
-        subseq_idx, data_subseqs, discriminator, batch_size, seq_len = args
-        # samples = self.rollout_generator.module.sample(batch_size, seq_len, data_subseqs)
-        samples = self.rollout_generator.sample(batch_size, seq_len, data_subseqs)
+        subseq_idx, discriminator, batch_size, seq_len, data_subseqs, chord_roots, chord_types = args
+        samples = self.rollout_generator.sample(batch_size, seq_len, chord_roots, chord_types, seed=data_subseqs)
         if torch.cuda.is_available():
             samples = samples.cuda()
         samples.to(self.device)
 
-        pred = discriminator(samples.cpu())
+        pred = discriminator(samples.cpu(), chord_roots.cpu(), chord_types.cpu())
         pred = pred.cpu().data[:, 1].numpy()  # why cpu?
         return subseq_idx, pred
 

@@ -10,7 +10,7 @@ TARGETS_KEY = "targets"
 CR_SEQS_KEY = "chord_root_sequences"
 CT_SEQS_KEY = "chord_type_sequences"
 
-### From Explicitly Conditioning Melody Paper
+# From Explicitly Conditioning Melody Paper
 PITCH_KEY = "pitch_numbers"
 DUR_KEY = "duration_tags"
 CHORD_KEY = "harmony"
@@ -21,26 +21,26 @@ CHORD_PC_KEY = "harmony_pitch_classes"
 NXT_CHORD_ROOT_KEY = "next_harmony_root"
 NXT_CHORD_PC_KEY = "next_harmony_pitch_classes"
 BARPOS_KEY = "bar_positions"
-
 #####################################################################
 # Model Params
 #####################################################################
 # Dims 
-VOCAB_SIZE = 89 # 1 tick has how many dims?
-CHORD_ROOT_DIM = 12
+VOCAB_SIZE = 89  # 1 tick has how many dims?
+CHORD_ROOT_DIM = 13
 CHORD_ROOT_EMBED_DIM = 2
-CHORD_PC_DIM = 12
-CHORD_PC_EMBED_DIM = 4
+CHORD_TYPE_DIM = 31
+CHORD_TYPE_EMBED_DIM = 5
+CHORD_EMBED_DIM = 7
 
 # Other
 NUM_RNN_LAYERS = 2
 TICKS_PER_MEASURE = 96
-SEED = 88 # for the randomize, no reason behind this number
+SEED = 88  # for the randomize, no reason behind this number
 
 # Generator Model Params
 GEN_EMBED_DIM = 64
-GEN_HIDDEN_DIM = 128 # ORIGINALLY 64
-GEN_SEQ_LEN = TICKS_PER_MEASURE * 4 # GENERATE 4 BARS
+GEN_HIDDEN_DIM = 128  # ORIGINALLY 64
+GEN_SEQ_LEN = TICKS_PER_MEASURE * 4  # GENERATE 4 BARS
 
 # DISCRIMINATOR MODEL PARAMETERS
 DSCR_EMBED_DIM = 128
@@ -49,40 +49,33 @@ DSCR_FILTER_SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 DSCR_DROPOUT = 0.75
 DSCR_NUM_CLASSES = 2
 
-### From Explicitly Conditioning Melody Paper
+# From Explicitly Conditioning Melody Paper
 PITCH_DIM = 89
 DUR_DIM = 19
 CHORD_DIM = 24
 BARPOS_DIM = 96
 PITCH_EMBED_DIM = 8
 DUR_EMBED_DIM = 4
-CHORD_EMBED_DIM = 8
 BARPOS_EMBED_DIM = 8
 
 #####################################################################
 # General Training Paramters
 #####################################################################
 BATCH_SIZE = 64
-GAN_TRAIN_EPOCHS = 200 # number of adversarial training epochs
-# NUM_SAMPLES = 5000 # num samples in each data file for training discriminator
-NUM_TRAIN_SAMPLES = 500 # num samples in each data file for training discriminator
-NUM_EVAL_SAMPLES = 100
+NUM_TRAIN_SAMPLES = 1000  # 5000, num samples in each data file for training discriminator
+NUM_EVAL_SAMPLES = 200
 
 # Pretraining Params
-# GEN_PRETRAIN_EPOCHS = 120
-# GEN_PRETRAIN_EPOCHS = 50
-GEN_PRETRAIN_EPOCHS = 1
-DSCR_PRETRAIN_DATA_GENS = 5
+GEN_PRETRAIN_EPOCHS = 50  # 120
+DSCR_PRETRAIN_DATA_GENS = 6
 DSCR_PRETRAIN_EPOCHS = 3
 
 # Adversarial Training Params
-NUM_ROLLOUTS = 16
-# NUM_ROLLOUTS = 1
+ADV_TRAIN_EPOCHS = 100  # number of adversarial training epochs
+NUM_ROLLOUTS = 8  # 16
 G_STEPS = 1
 D_DATA_GENS = 4
 D_STEPS = 2
-# D_DATA_GENS = 1
-# D_STEPS = 1
 
 #####################################################################
 # Dictionaries

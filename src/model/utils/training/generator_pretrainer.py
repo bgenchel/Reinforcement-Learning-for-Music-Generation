@@ -25,9 +25,12 @@ class GeneratorPretrainer:
             self.criterion = self.criterion.cuda()
 
     def train(self):
-        train_losses = []
-        valid_losses = []
-        min_valid_loss = float('inf')
+        train_losses = [self._eval_epoch(data_iter=self.train_iter)]
+        print('::PRETRAIN GEN:: Initial Training Loss: %f' % (train_losses[0]))
+        valid_losses = [self._eval_epoch(data_iter=self.valid_iter)]
+        print('::PRETRAIN GEN:: Initial Validation Loss: %f' % (valid_losses[0]))
+
+        min_valid_loss = valid_losses[0]
         for epoch in range(const.GEN_PRETRAIN_EPOCHS):
             train_loss = self._train_epoch()
             train_losses.append(train_loss)
@@ -46,29 +49,32 @@ class GeneratorPretrainer:
                             'valid_loss': valid_loss,
                             'datetime': datetime.now().isoformat()}, op.join(self.save_dir, 'generator.pt'))
 
-            if epoch > 1:
-                return
-
         torch.save({'train_losses': train_losses,
                     'valid_losses': valid_losses}, op.join(self.save_dir, 'generator_losses.pt'))
 
     def _train_epoch(self):
-        # trains `model` for one epoch using data from `data_iter`. 
+        """
+        trains `model` for one epoch using data from `data_iter`. 
+        """
         total_loss = 0.0
         total_words = 0.0
-        total_batches = 0
+        # total_batches = 0
         for data in tqdm(self.train_iter, desc=' - Pretraining Generator', leave=False):
-            data_var = data["sequences"]
-            target_var = data['targets']
+            data_var = data[const.SEQS_KEY]
+            cr_var = data[const.CR_SEQS_KEY]  # chord roots
+            ct_var = data[const.CT_SEQS_KEY]  # chord types
+            target_var = data[const.TARGETS_KEY]
 
             if self.args.cuda and torch.cuda.is_available():
-                data_var, target_var = data_var.cuda(), target_var.cuda()
+                data_var, cr_var, ct_var, target_var = data_var.cuda(), cr_var.cuda(), ct_var.cuda(), target_var.cuda()
 
             data_var = data_var.to(self.device)
+            cr_var = cr_var.to(self.device)
+            ct_var = ct_var.to(self.device)
             target_var = target_var.to(self.device)
 
             target_var = target_var.contiguous().view(-1)
-            pred = self.generator.forward(data_var)
+            pred = self.generator.forward(data_var, cr_var, ct_var)
             pred = pred.view(-1, pred.size()[-1])
 
             loss = self.criterion(pred, target_var)
@@ -79,29 +85,39 @@ class GeneratorPretrainer:
             loss.backward()
             self.optimizer.step()
 
-            total_batches += 1
-            if total_batches > 10:
-                break
+            ############################
+            # just temporary, for debugging
+            # total_batches += 1
+            # if total_batches > 10:
+                # break
+            ###########################
 
         return total_loss / total_words
 
-    def _eval_epoch(self):
+    def _eval_epoch(self, data_iter=None):
+        if data_iter is None:
+            data_iter = self.valid_iter
+
         total_loss = 0.0
         total_words = 0.0
-        count = 0  # temp for debugging
+        # total_batches = 0  # temp for debugging
         with torch.no_grad():
-            for data in tqdm(self.valid_iter, desc=" - Generator Evaluation", leave=False):
-                data_var = Variable(data["sequences"])
-                target_var = Variable(data["targets"])
+            for data in tqdm(data_iter, desc=" - Generator Evaluation", leave=False):
+                data_var = data[const.SEQS_KEY]
+                cr_var = data[const.CR_SEQS_KEY]  # chord roots
+                ct_var = data[const.CT_SEQS_KEY]  # chord types
+                target_var = data[const.TARGETS_KEY]
 
                 if self.args.cuda and torch.cuda.is_available():
-                    data_var, target_var = data_var.cuda(), target_var.cuda()
+                    data_var, cr_var, ct_var, target_var = data_var.cuda(), cr_var.cuda(), ct_var.cuda(), target_var.cuda()
 
                 data_var = data_var.to(self.device)
+                cr_var = cr_var.to(self.device)
+                ct_var = ct_var.to(self.device)
                 target_var = target_var.to(self.device)
 
                 target_var = target_var.contiguous().view(-1)
-                pred = self.generator.forward(data_var)
+                pred = self.generator.forward(data_var, cr_var, ct_var)
                 pred = pred.view(-1, pred.size()[-1])
 
                 loss = self.criterion(pred, target_var)
@@ -110,9 +126,9 @@ class GeneratorPretrainer:
 
                 ############################
                 # just temporary, for debugging
-                count += 1
-                if count > 10:
-                    break
+                # total_batches += 1
+                # if total_batches > 10:
+                    # break
                 ###########################
 
         return total_loss / total_words
