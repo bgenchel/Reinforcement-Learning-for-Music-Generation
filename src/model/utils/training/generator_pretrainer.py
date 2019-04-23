@@ -54,7 +54,7 @@ class GeneratorPretrainer:
 
     def _train_epoch(self):
         """
-        trains `model` for one epoch using data from `data_iter`. 
+        trains `model` for one epoch using data from `data_iter`.
         """
         total_loss = 0.0
         total_words = 0.0

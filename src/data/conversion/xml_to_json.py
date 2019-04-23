@@ -74,10 +74,10 @@ def harmony_timing(measure):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--dataset', choices=("charlie_parker", "bebop", "nottingham"), type=str, 
+    parser.add_argument('-d', '--dataset', choices=("charlie_parker", "bebop", "nottingham"), type=str,
                         required=True, help="the dataset to convert")
     args = parser.parse_args()
-    
+
     root_dir = str(Path(op.abspath(__file__)).parents[3])
     xml_path = op.join(root_dir, 'data', 'raw', args.dataset + '-xml')
     if not op.exists(xml_path):

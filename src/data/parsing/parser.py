@@ -11,7 +11,7 @@ import pickle
 import argparse
 
 sys.path.append(str(Path(op.abspath(__file__)).parents[2]))
-import utils.constants as const
+import model.utils.constants as const
 
 TICKS_PER_BEAT = 24 # 96 ticks per bar in 4/4
 MIDI_RANGE = 128
