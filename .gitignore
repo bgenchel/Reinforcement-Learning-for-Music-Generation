@@ -1,5 +1,4 @@
 /data
 .DS_Store
 *.pyc
-*/model/pretrained/
 */model/temp_data/
