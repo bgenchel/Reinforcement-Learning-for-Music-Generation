@@ -1,0 +1,9 @@
+{
+    "load_dir": "/home/bgenchel/Curious-Musical-SeqGAN/data/processed/charlie_parker-songs",
+    "measures_per_seq": 4,
+    "hop_size": 4,
+    "range_low": 21,
+    "range_high": 108,
+    "data_format": "nums",
+    "target_type": "full_sequence"
+}
