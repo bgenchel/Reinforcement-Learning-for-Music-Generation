@@ -72,9 +72,10 @@ class AdversarialRLTrainer:
             gen_loss = self._train_generator(epoch)
             self.gen_losses.append(gen_loss)
 
-            if (gen_loss) < min_gen_loss:
+            if gen_loss < min_gen_loss:
                 self._save_models()
                 self._save_losses()
+                min_gen_loss = gen_loss
 
             # Train the Discriminator for `D_STEPS` each on `D_DATA_GENS` sets of generated and sampled real data
             print("-" * 5 + ' Discriminator Training ' + '-' * 5)
@@ -135,8 +136,8 @@ class AdversarialRLTrainer:
 
             # Check how our MLE validation changes with GAN loss. We've noticed it going up, but are unsure
             # if this is a good metric by which to validate for this type of training.
-            # valid_loss = self._eval_epoch(self.generator, self.valid_iter, self.eval_loss)
-            # print('Adv Epoch [%d], Gen Step [%d] - Valid Loss: %f' % (epoch, gstep, valid_loss))
+            valid_loss = self._eval_epoch(self.generator, self.valid_iter, self.eval_loss)
+            print('Adv Epoch [%d], Gen Step [%d] - Valid Loss: %f' % (epoch, gstep, valid_loss))
 
         return total_loss / const.G_STEPS
 

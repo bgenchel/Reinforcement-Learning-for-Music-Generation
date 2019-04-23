@@ -49,7 +49,6 @@ class Rollout(object):
         # return np.ones(data.shape) * 0.5
         # -------------------
         for rn in range(num_rollouts):
-            print("Rollout #%d: " % rn)
             args_list = []
             for ss_idx in range(1, seq_len + 1):
                 # Add process arguments
@@ -57,11 +56,14 @@ class Rollout(object):
                 args_list.append((ss_idx, discriminator, batch_size, seq_len, data_subseqs, chord_roots, chord_types))
 
             results = pool.imap(self._get_reward_process, args_list, chunksize=20)
-            for (ss_idx, pred) in tqdm(results, desc=' - Rollout for Generator Training'):
+            for (ss_idx, pred) in tqdm(results, desc=" - Rollout #%d" % rn):
                 if rn == 0:
                     rewards.append(pred)
                 else:
                     rewards[ss_idx - 1] += pred
+
+        pool.close()
+        pool.join()
 
         rewards = np.transpose(np.array(rewards)) / float(num_rollouts)
         return rewards
