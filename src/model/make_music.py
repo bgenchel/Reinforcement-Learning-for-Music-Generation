@@ -7,27 +7,25 @@ import json
 import os
 import os.path as op
 import numpy as np
-import pathlib
 import random
-import sys
 import torch
 from generator import Generator
 from pathlib import Path
 
-import pdb
-
-sys.path.append(str(Path(op.abspath(__file__)).parents[1]))
-from utils.reverse_pianoroll import piano_roll_to_pretty_midi
+from .utils.reverse_pianoroll import piano_roll_to_pretty_midi
 
 A0 = 21
 
 NUM_GENS = 100
 SEQ_LEN = 384
-SEED_LEN = 48 # 2 beats
+SEED_LEN = 48  # 2 beats
+
+RUN_LABEL = 'Apr22-19_15:52:27'
+
 
 def main():
     # load saved model files
-    rl_model_dir = op.join(os.getcwd(),'runs', 'charlie_parker', 'Apr04-19_19:07:07')
+    rl_model_dir = op.join(os.getcwd(), 'runs', 'charlie_parker', RUN_LABEL)
     rl_model_inputs = json.load(open(op.join(rl_model_dir, 'model_inputs.json'), 'r'))
     rl_model_inputs['use_cuda'] = False
     rl_model_state = torch.load(op.join(rl_model_dir, 'generator_state.pt'), map_location='cpu')
@@ -36,12 +34,12 @@ def main():
     rl_gen.load_state_dict(rl_model_state)
     rl_gen.eval()
     # output
-    rl_outdir = op.join(os.getcwd(), 'generated', 'charlie_parker', 'pt')
+    rl_outdir = op.join(os.getcwd(), 'generated', 'charlie_parker', RUN_LABEL, 'fully_trained')
     if not op.exists(rl_outdir):
         os.makedirs(rl_outdir)
 
     # load saved model files
-    mle_model_dir = op.join(os.getcwd(),'pretrained', 'charlie_parker')
+    mle_model_dir = op.join(os.getcwd(), 'pretrained', 'charlie_parker')
     mle_model_state = torch.load(op.join(mle_model_dir, 'generator.pt'), map_location='cpu')['state_dict']
     # reconstitute models
     mle_gen = Generator(89, 64, 128, False)
