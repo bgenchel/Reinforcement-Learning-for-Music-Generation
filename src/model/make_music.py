@@ -23,7 +23,7 @@ NUM_GENS = 10
 SEQ_LEN = 384
 SEED_LEN = 48  # 2 beats
 
-RUN_LABEL = 'Apr22-19_15:52:27'
+RUN_LABEL = 'Keep-Apr28-19_03:32-MP_Final_Train'
 
 CT_DICT = {0: {"label": "n.c.",
                "components": {}},
@@ -89,7 +89,7 @@ def main():
     device = torch.device("cpu")
     # load saved model files
     rl_model_dir = op.join(os.getcwd(), 'runs', 'charlie_parker', RUN_LABEL)
-    model_dict = torch.load(op.join(rl_model_dir, 'generator.pt'), map_location='cpu')
+    model_dict = torch.load(op.join(rl_model_dir, 'generator_final.pt'), map_location='cpu')
     rl_model_inputs = model_dict['model_inputs']
     rl_model_inputs['use_cuda'] = False
     rl_model_inputs['device'] = device
@@ -106,7 +106,7 @@ def main():
     mle_model_dir = op.join(os.getcwd(), 'pretrained', 'charlie_parker')
     mle_model_state = torch.load(op.join(mle_model_dir, 'generator.pt'), map_location='cpu')['state_dict']
     # reconstitute models
-    mle_gen = Generator(89, 64, 128, device, False)
+    mle_gen = Generator(89, 8, 128, device, False)
     mle_gen.load_state_dict(mle_model_state)
     mle_gen.eval()
     # output

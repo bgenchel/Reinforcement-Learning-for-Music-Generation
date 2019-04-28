@@ -12,7 +12,7 @@ import torch
 from pathlib import Path
 # local
 from generator import Generator
-from discriminator import Discriminator
+from discriminator import Discriminator as Discriminator
 from utils import constants as const
 from utils.data.datasets import HDF5Dataset
 from utils.data.dataloaders import SplitDataLoader
@@ -23,7 +23,7 @@ parser.add_argument('-glr', '--gen_learning_rate', default=1e-3, type=float, hel
 parser.add_argument('-aglr', '--adv_gen_learning_rate', default=1e-3, type=float, 
                     help="learning rate for generator during adversarial training")
 parser.add_argument('-dlr', '--dscr_learning_rate', default=1e-3, type=float, help="learning rate for discriminator")
-parser.add_argument('-adlr', '--adv_dscr_learning_rate', default=1e-3, type=float, 
+parser.add_argument('-adlr', '--adv_dscr_learning_rate', default=1e-4, type=float, 
                     help=" adversarial learning rate for discriminator")
 parser.add_argument('-fpt', '--force_pretrain', default=False, action='store_true', 
                     help="force pretraining of both generator and discriminator, instead of loading from cache.")
@@ -75,7 +75,7 @@ def main(pretrain_dataset, rl_dataset, args):
 
     # Define Networks
     generator = Generator(const.VOCAB_SIZE, const.GEN_EMBED_DIM, const.GEN_HIDDEN_DIM, device, args.cuda)
-    discriminator = Discriminator(const.VOCAB_SIZE, const.DSCR_EMBED_DIM, const.DSCR_FILTER_SIZES, 
+    discriminator = Discriminator(const.VOCAB_SIZE, const.DSCR_EMBED_DIM, const.DSCR_FILTER_LENGTHS, 
                                   const.DSCR_NUM_FILTERS, const.DSCR_NUM_CLASSES, const.DSCR_DROPOUT)
 
     # if torch.cuda.device_count() > 1:

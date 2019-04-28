@@ -28,9 +28,9 @@ BARPOS_KEY = "bar_positions"
 VOCAB_SIZE = 89  # 1 tick has how many dims?
 CHORD_ROOT_DIM = 13
 CHORD_ROOT_EMBED_DIM = 2
-CHORD_TYPE_DIM = 31
-CHORD_TYPE_EMBED_DIM = 5
-CHORD_EMBED_DIM = 7
+CHORD_TYPE_DIM = 28
+CHORD_TYPE_EMBED_DIM = 4
+CHORD_EMBED_DIM = 6
 
 # Other
 NUM_RNN_LAYERS = 2
@@ -38,15 +38,18 @@ TICKS_PER_MEASURE = 96
 SEED = 88  # for the randomize, no reason behind this number
 
 # Generator Model Params
-GEN_EMBED_DIM = 64
+GEN_EMBED_DIM = 8  # 16
 GEN_HIDDEN_DIM = 128  # ORIGINALLY 64
 GEN_SEQ_LEN = TICKS_PER_MEASURE * 4  # GENERATE 4 BARS
 
 # DISCRIMINATOR MODEL PARAMETERS
-DSCR_EMBED_DIM = 128
-DSCR_NUM_FILTERS = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
-DSCR_FILTER_SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
-DSCR_DROPOUT = 0.75
+DSCR_EMBED_DIM = 8  # 128
+# DSCR_NUM_FILTERS = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
+# DSCR_FILTER_SIZES = [1,  2,   3,   4,   5,   6,   7,   8,   9,   10,  15,  20]
+DSCR_NUM_FILTERS = [2, 4, 8, 16, 16, 16, 32, 32]
+# 14 = CHORD_EMBED_DIM + DSCR_EMBED_DIM
+DSCR_FILTER_LENGTHS = [3, 6, 12, 24, 48, 96, 192, 384]
+DSCR_DROPOUT = 0.5
 DSCR_NUM_CLASSES = 2
 
 # From Explicitly Conditioning Melody Paper
@@ -67,14 +70,14 @@ NUM_EVAL_SAMPLES = 200
 
 # Pretraining Params
 GEN_PRETRAIN_EPOCHS = 50  # 120
-DSCR_PRETRAIN_DATA_GENS = 6
-DSCR_PRETRAIN_EPOCHS = 3
+DSCR_PRETRAIN_DATA_GENS = 3
+DSCR_PRETRAIN_EPOCHS = 2  # 2
 
 # Adversarial Training Params
 ADV_TRAIN_EPOCHS = 100  # number of adversarial training epochs
 NUM_ROLLOUTS = 8  # 16
-G_STEPS = 1
-D_DATA_GENS = 4
+G_STEPS = 6
+D_DATA_GENS = 3
 D_STEPS = 2
 
 #####################################################################
@@ -150,6 +153,7 @@ DUR_TICKS_MAP = {
     'whole-dot': 144,
     'double': 192,
     'double-dot': 288,
+    '4-bar': 384,
     'none': 0
 }
 

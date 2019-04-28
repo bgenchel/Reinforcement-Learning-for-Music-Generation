@@ -1,5 +1,4 @@
 import os.path as op
-import pickle as pkl
 import pdb
 import torch
 import torch.nn as nn
@@ -24,6 +23,8 @@ class DiscriminatorPretrainer:
         self.cache_dir = cache_dir
         self.device = device
         self.args = args
+
+        self.prepare_vars = partial(hlp.prepare_vars, self.args.cuda, self.device)
 
         if not op.exists(self.cache_dir):
             op.makedirs(self.cache_dir)
@@ -123,5 +124,5 @@ class DiscriminatorPretrainer:
         data_iter = self.sdlf.get_subset_dataloader(num_samples)
         self._create_generated_data_file(generator, data_iter)
         self._create_real_data_file(data_iter)
-        dscr_data_iter = DataLoader(DscrDataset(self.real_data_path, self.generated_data_path), batch_size=const.BATCH_SIZE, shuffle=True)
+        dscr_data_iter = DataLoader(DscrDataset(self.real_data_path, self.gen_data_path), batch_size=const.BATCH_SIZE, shuffle=True)
         return dscr_data_iter

@@ -13,7 +13,7 @@ from . import constants as const
 def prepare_vars(cuda, device, *args):
     new_args = []
     for arg in args:
-        arg = Variable(arg) 
+        arg = Variable(arg)
         if cuda and torch.cuda.is_available():
             arg = arg.cuda()
         arg.to(device)

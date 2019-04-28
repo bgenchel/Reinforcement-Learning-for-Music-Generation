@@ -9,15 +9,15 @@ import sys
 from pathlib import Path
 from tqdm import tqdm
 
-sys.path.append(str(Path(op.abspath(__file__)).parents[1]))
-import utils.constants as const
+sys.path.append(str(Path(op.abspath(__file__)).parents[2]))
+from src.model.utils import constants as const
 
 ROOT_DIR = str(Path(op.abspath(__file__)).parents[2])
 # default low and high for MIDI note range
 A0 = 21 
 C8 = 108
 
-SEQ_LEN = 96 # 96 ticks to one measure
+SEQ_LEN = 96 * 4  # 96 ticks to one measure
 DTYPE = np.uint8
 
 
@@ -31,14 +31,16 @@ def prepare_mle_hdf5(file_path):
     hdf5.create_dataset(const.TARGETS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=DTYPE)
     return hdf5
 
+
 def prepare_rl_hdf5(file_path):
     print(file_path)
     hdf5 = h5py.File(file_path, 'w')
     # choosing int 8 because all these tokens should be less than 256
-    hdf5.create_dataset(const.SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=DTYPE)
-    hdf5.create_dataset(const.CR_SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=DTYPE)
-    hdf5.create_dataset(const.CT_SEQS_KEY, shape=(0,) + (SEQ_LEN * 4,), maxshape=(None,) + (SEQ_LEN * 4,), dtype=DTYPE)
+    hdf5.create_dataset(const.SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=DTYPE)
+    hdf5.create_dataset(const.CR_SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=DTYPE)
+    hdf5.create_dataset(const.CT_SEQS_KEY, shape=(0,) + (SEQ_LEN,), maxshape=(None,) + (SEQ_LEN,), dtype=DTYPE)
     return hdf5
+
 
 def write_to_mle_hdf5(hdf5, seqs, targets, cr_seqs, ct_seqs):
     # Define references to the datasets
@@ -59,6 +61,7 @@ def write_to_mle_hdf5(hdf5, seqs, targets, cr_seqs, ct_seqs):
     h5_chord_root_seqs[curr_size:curr_size + add_num, :] = cr_seqs
     h5_chord_type_seqs[curr_size:curr_size + add_num, :] = ct_seqs
 
+
 def write_to_rl_hdf5(hdf5, seq, cr_seq, ct_seq):
     # Define references to the datasets
     h5_seqs = hdf5[const.SEQS_KEY]
@@ -74,12 +77,13 @@ def write_to_rl_hdf5(hdf5, seq, cr_seq, ct_seq):
     h5_chord_root_seqs[curr_size:curr_size + 1, :] = cr_seq
     h5_chord_type_seqs[curr_size:curr_size + 1, :] = ct_seq
 
+
 def create_data_dict():
     return {const.TICK_KEY: [], const.CHORD_ROOT_KEY: [], const.CHORD_TYPE_KEY: []}
 
-def get_seqs_and_targets(sequence):
+
+def get_seqs_and_targets(sequence, seq_len):
     seqs, targets = [], []
-    seq_len = SEQ_LEN
     if len(sequence.shape) == 1:
         padding = np.zeros((seq_len))
     else:
@@ -89,6 +93,7 @@ def get_seqs_and_targets(sequence):
         seqs.append(sequence[i:(i + seq_len)])
         targets.append(sequence[(i + 1):(i + seq_len + 1)])
     return seqs, targets
+
 
 def main(args):
     parsed_dir = op.join(ROOT_DIR, "data", "interim", args.dataset + '-parsed') 
@@ -100,7 +105,7 @@ def main(args):
 
     h5_mle_fp = prepare_mle_hdf5(op.join(out_dir, args.dataset + "-dataset-mle.h5"))
     h5_rl_fp = prepare_rl_hdf5(op.join(out_dir, args.dataset + "-dataset-rl.h5"))
-    
+
     file_count = 0
     for fname in tqdm(os.listdir(parsed_dir)):
         if op.splitext(fname)[1] != ".pkl":
@@ -108,7 +113,7 @@ def main(args):
             continue
 
         with open(op.join(parsed_dir, fname), "rb") as fp:
-            song = pkl.load(open(op.join(parsed_dir, fname), "rb"))
+            song = pkl.load(fp)
 
         if song["metadata"]["time_signature"] != "4/4":
             print("Skipping %s because it isn't in 4/4." % fname)
@@ -117,7 +122,7 @@ def main(args):
         ########################################
         # Writing Pre-Training H5 File
         ########################################
-        
+
         full_sequence = create_data_dict()
         for i, measure in enumerate(song["measures"]):
             for j, group in enumerate(measure["groups"]):
@@ -133,15 +138,15 @@ def main(args):
                     if tick == 0 or tick < A0 or tick > C8:
                         formatted = 0
                     else:
-                        formatted = tick - A0 + 1 # lower bound maps to 1, not 0 (rest)
+                        formatted = tick - A0 + 1  # lower bound maps to 1, not 0 (rest)
                     formatted_ticks.append(formatted)
 
                 full_sequence[const.TICK_KEY].extend(formatted_ticks)
 
         full_sequence = {k: np.array(v, dtype=DTYPE) for k, v in full_sequence.items()} 
-        tick_seqs, tick_targets = get_seqs_and_targets(full_sequence[const.TICK_KEY])
-        cr_seqs, cr_targets = get_seqs_and_targets(full_sequence[const.CHORD_ROOT_KEY])
-        ct_seqs, ct_targets = get_seqs_and_targets(full_sequence[const.CHORD_TYPE_KEY])
+        tick_seqs, tick_targets = get_seqs_and_targets(full_sequence[const.TICK_KEY], SEQ_LEN)
+        cr_seqs, cr_targets = get_seqs_and_targets(full_sequence[const.CHORD_ROOT_KEY], SEQ_LEN)
+        ct_seqs, ct_targets = get_seqs_and_targets(full_sequence[const.CHORD_TYPE_KEY], SEQ_LEN)
 
         write_to_mle_hdf5(h5_mle_fp, tick_seqs, tick_targets, cr_seqs, ct_seqs)
 
@@ -174,18 +179,19 @@ def main(args):
                         if tick == 0 or tick < A0 or tick > C8:
                             formatted = 0
                         else:
-                            formatted = tick - A0 + 1 # lower bound maps to 1, not 0 (rest)
+                            formatted = tick - A0 + 1  # lower bound maps to 1, not 0 (rest)
                         formatted_ticks.append(formatted)
 
                     full_sequence[const.TICK_KEY].extend(formatted_ticks)
 
-            assert len(full_sequence[const.TICK_KEY]) == SEQ_LEN * 4
+            assert len(full_sequence[const.TICK_KEY]) == SEQ_LEN
             write_to_rl_hdf5(h5_rl_fp, full_sequence[const.TICK_KEY], full_sequence[const.CHORD_ROOT_KEY],
-                    full_sequence[const.CHORD_TYPE_KEY])
+                             full_sequence[const.CHORD_TYPE_KEY])
 
             start_measure += 4
 
         file_count += 1
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Feature Extraction and HDF5 Dataset Creation')

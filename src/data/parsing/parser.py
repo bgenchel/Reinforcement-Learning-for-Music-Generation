@@ -124,10 +124,10 @@ class Parser:
         filename = filename.split('/')[-1][:-5]
 
         # Key
-        key, multiple = cls.get_key(song_dict)
-        if multiple:
-            # Disregard songs with multiple keys
-            return None
+        # key, multiple = cls.get_key(song_dict)
+        # if multiple:
+        #     # Disregard songs with multiple keys
+        #     return None
 
         # Title
         if "movement-title" in song_dict:
@@ -151,7 +151,7 @@ class Parser:
         return {
             "title": title,
             "artist": artist,
-            "key": key,
+            # "key": key,
             "time_signature": time_signature
         }
 
@@ -250,6 +250,10 @@ class TickParser(Parser):
             # Get song metadata
             metadata = super().parse_metadata(filename, song_dict)
 
+            if metadata["time_signature"] != "4/4":
+                skipped += 1
+                continue
+
             # Add ticks per measure to metadata
             time_signature = [int(n) for n in metadata["time_signature"].split("/")]
             metadata["ticks_per_measure"] = int(time_signature[0] * (4 / time_signature[1]) * self.ticks)
@@ -305,7 +309,7 @@ class TickParser(Parser):
             # Set note value for each tick in the measure
             group_ticks = []
             for note in group["notes"]:
-                if not "duration" in note:
+                if "duration" not in note:
                     print("Skipping grace note...")
                     continue
                 divisions = int(note["duration"]["text"])
@@ -641,7 +645,7 @@ class PitchDurParser(Parser):
                     parsed_group["duration_tags"].append(dur_tag)
                     dur_ticks_list.append(dur_ticks)
             unnorm_barpos = [tick_idx + sum(dur_ticks_list[:i]) for i in range(len(dur_ticks_list))]
-            bar_positions = [int((dur_ticks / (4 * divisions)) * 96)  for dur_ticks in unnorm_barpos]
+            bar_positions = [int((dur_ticks / (4 * divisions)) * 96) for dur_ticks in unnorm_barpos]
             parsed_group["bar_positions"] = bar_positions
             parsed_measure["groups"].append(parsed_group)
             tick_idx += sum(dur_ticks_list)

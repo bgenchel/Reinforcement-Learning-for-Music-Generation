@@ -51,16 +51,6 @@ class Generator(nn.Module):
             param.data.uniform_(-0.05, 0.05)
         return
 
-    def prepare_vars(self, *args):
-        new_args = []
-        for arg in args:
-            arg = Variable(arg) 
-            if self.cuda and torch.cuda.is_available():
-                arg = arg.cuda()
-            arg.to(self.device)
-            new_args.append(arg)
-        return tuple(new_args)
-
     def init_hidden_and_cell(self, batch_size):
         hidden = Variable(torch.zeros((self.num_layers, batch_size, self.hidden_dim)))
         cell = Variable(torch.zeros((self.num_layers, batch_size, self.hidden_dim)))
@@ -124,7 +114,6 @@ class Generator(nn.Module):
             inpt, cr_inpt, ct_inpt = self.prepare_vars(inpt, cr_inpt, ct_inpt)
             for i in range(seq_len):
                 output, hidden, cell = self.single_step(inpt, cr_inpt, ct_inpt, hidden, cell)
-
                 inpt = torch.exp(output).multinomial(1)  # sample the softmax distribution once
                 cr_inpt = cr_symbols[i]
                 ct_inpt = ct_symbols[i]
@@ -132,10 +121,11 @@ class Generator(nn.Module):
 
                 samples.append(inpt)
         else:
+            seed = self.prepare_vars(seed)
+            # split up the samples into length 1 tensors
             seed_len = seed.size(1)
             seed_symbols = seed.chunk(seed_len, dim=1)  # each element becomes its own tensor
             samples.extend(seed_symbols)
-
             # run through the seed to set the network state
             for i in range(seed_len):
                 inpt, cr_inpt, ct_inpt = self.prepare_vars(seed_symbols[i], cr_symbols[i], ct_symbols[i])
@@ -157,3 +147,6 @@ class Generator(nn.Module):
                 inpt, cr_inpt, ct_inpt = self.prepare_vars(inpt, cr_inpt, ct_inpt)
 
         return torch.cat(samples, dim=1)
+
+    def flatten_parameters(self):
+        self.lstm.flatten_parameters()

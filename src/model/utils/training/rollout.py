@@ -76,7 +76,7 @@ class Rollout(object):
         samples.to(self.device)
 
         pred = discriminator(samples.cpu(), chord_roots.cpu(), chord_types.cpu())
-        pred = pred.cpu().data[:, 1].numpy()  # why cpu?
+        pred = pred.cpu().data[:, 1].numpy()  # rewards = probability of being human
         return subseq_idx, pred
 
     def update_params(self):
