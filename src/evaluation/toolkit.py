@@ -1,3 +1,4 @@
+import json
 import argparse
 import os
 import glob
@@ -7,6 +8,7 @@ from sklearn.model_selection import LeaveOneOut
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
+from collections import OrderedDict
 
 PRETRAINED_DIR = "../model/eval/eval_pretrained"
 FULLY_TRAINED_DIR = "../model/eval/eval_fully_trained"
@@ -52,8 +54,11 @@ class MGEval:
         target_metric = np.zeros((self.num_samples,) + target_metric_shape)
 
         for sample in range(self.num_samples):
-            pred_metric[sample] = getattr(self.metrics, metric_name)(core.extract_feature(self.pred_set[sample]), *args, **kwargs)
-            target_metric[sample] = getattr(self.metrics, metric_name)(core.extract_feature(self.target_set[sample]), *args, **kwargs)
+            try:
+                pred_metric[sample] = getattr(self.metrics, metric_name)(core.extract_feature(self.pred_set[sample]), *args, **kwargs)
+                target_metric[sample] = getattr(self.metrics, metric_name)(core.extract_feature(self.target_set[sample]), *args, **kwargs)
+            except:
+                continue
 
         return pred_metric, target_metric
 
@@ -83,30 +88,46 @@ class MGEval:
 
         return pred_intra_set_distance_cv, target_intra_set_distance_cv
 
-    def visualize(self, metric_name, pred_intra, target_intra, inter):
+    def visualize(self, metric_name, pred_intra, target_intra, inter, figpath):
         for measurement, label in zip([pred_intra, target_intra, inter], ["pred_intra", "target_intra", "inter"]):
             transposed = np.transpose(measurement, (1, 0, 2)).reshape(1, -1)
             sns.kdeplot(transposed[0], label=label)
 
         plt.title(metric_name)
         plt.xlabel('Euclidean distance')
-        plt.show()
+        plt.savefig(figpath)
+        plt.close()
 
-    def intra_inter_difference(self, metric_name, pred_intra, target_intra, inter):
+    def intra_inter_difference(self, metric_name, pred_intra, target_intra, inter, outpath):
         transposed = []
-
+        
         for measurement, label in zip([pred_intra, target_intra, inter], ["pred_intra", "target_intra", "inter"]):
             transposed_meas = np.transpose(measurement, (1, 0, 2)).reshape(1, -1)
             transposed.append(transposed_meas)
 
-        print(metric_name + ':')
-        print('------------------------')
-        print(' Predictions')
-        print('  KL divergence:', utils.kl_dist(transposed[0][0], transposed[2][0]))
-        print('  Overlap area:', utils.overlap_area(transposed[0][0], transposed[2][0]))
-        print(' Targets')
-        print('  KL divergence:', utils.kl_dist(transposed[1][0], transposed[2][0]))
-        print('  Overlap area:', utils.overlap_area(transposed[1][0], transposed[2][0]))
+        results = OrderedDict({'p2i_kl': utils.kl_dist(transposed[0][0], transposed[2][0]),
+                               'p2i_ovl': utils.overlap_area(transposed[0][0], transposed[2][0]),
+                               't2i_kl': utils.kl_dist(transposed[1][0], transposed[2][0]),
+                               't2i_ovl': utils.overlap_area(transposed[1][0], transposed[2][0]),
+                               'p2t_kl': utils.kl_dist(transposed[0][0], transposed[1][0]),
+                               'p2t_ovl': utils.overlap_area(transposed[0][0], transposed[1][0])})
+
+        txt_fp = open(outpath + '.txt', 'w')
+        txt_fp.write(metric_name + ':\n')
+        txt_fp.write('-------------------------\n')
+        txt_fp.write(' Predictions to Inter\n')
+        txt_fp.write('     KL divergence: {}\n'.format(results['p2i_kl']))
+        txt_fp.write('     Overlap area: {}\n'.format(results['p2i_ovl']))
+        txt_fp.write(' Targets to Inter\n')
+        txt_fp.write('     KL divergence: {}\n'.format(results['t2i_kl']))
+        txt_fp.write('     Overlap area: {}\n'.format(results['t2i_ovl']))
+        txt_fp.write(' Predictions to Target\n')
+        txt_fp.write('     KL divergence: {}\n'.format(results['p2t_kl']))
+        txt_fp.write('     Overlap area: {}\n'.format(results['p2t_ovl']))
+        txt_fp.close()
+
+        json_fp = open(outpath + '.json', 'w')
+        json.dump(results, json_fp)
 
 
 def calculate_metric(mge, metric_name, pred_metric_shape, target_metric_shape, args, kwargs, statspath, figpath):
@@ -118,7 +139,7 @@ def calculate_metric(mge, metric_name, pred_metric_shape, target_metric_shape, a
     mge.intra_inter_difference(metric_name, pred_intra, target_intra, inter, statspath)
     mge.visualize(metric_name, pred_intra, target_intra, inter, figpath)
     # except Exception as e:
-        # print("Error occured while calculating {}: {}".format(metric_name, repr(e)))
+    # print("Error occured while calculating {}: {}".format(metric_name, repr(e)))
 
 
 def main(model, metric_name):
