@@ -42,7 +42,6 @@ if torch.cuda.is_available() and (not args.no_cuda):
     device = torch.device("cuda:%d" % args.cuda_device)
     args.cuda = True
 else:
-    torch.set_device("cpu")
     device = torch.device("cpu")
     args.cuda = False
 

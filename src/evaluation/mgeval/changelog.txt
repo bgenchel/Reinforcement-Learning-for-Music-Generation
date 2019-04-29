@@ -1,0 +1,21 @@
+hack that I did -> some of my midi files only have 1 track; the attributes are just in that track instead of in their
+own independent thing. I added a hack into these functions so that if the track specified is 1, and there is only one
+track in the midi file, then the track_num gets converted to 0.
+
+another hack I added - sometimes I saw this:
+$ used_notes[pattern[track_num][i].tick // bar_length] += 1
+and it would cause an index out of bounds error
+so I converted it to this: 
+$ idx = min(pattern[track_num][i].tick // bar_length, len(used_notes) - 1)
+$ used_notes[idx] += 1
+
+I think that bar_pitch_class_histogram is broken
+The readme claims that it will output (num_bars, 12), but it doesn't it calculates some insanely huge number and then
+tries to reshape it into some 3dim vector. 
+- I see the problem now, seems like there's something weird happening in the reshaping ... but honestly, I don't know
+why you would reshape something like that ... it just doesn't make sense. You're blocking into sets of num_bar ... but
+why?
+
+there is a bug on line 223, 
+
+Fixed the bug, it was a weird ... skip a step type of deal

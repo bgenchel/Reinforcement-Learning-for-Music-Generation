@@ -47,7 +47,7 @@ class GeneratorPretrainer:
                             'epochs': epoch + 1,
                             'train_loss': train_loss,
                             'valid_loss': valid_loss,
-                            'datetime': datetime.now().isoformat()}, op.join(self.save_dir, 'generator.pt'))
+                            'datetime': datetime.now().isoformat()}, op.join(self.save_dir, 'ml_generator.pt'))
 
         torch.save({'train_losses': train_losses,
                     'valid_losses': valid_losses}, op.join(self.save_dir, 'generator_losses.pt'))
@@ -58,7 +58,7 @@ class GeneratorPretrainer:
         """
         total_loss = 0.0
         total_words = 0.0
-        # total_batches = 0
+        total_confidence = 0.0  # basically, sum(p(n)) where n is the sampled note at each step
         for data in tqdm(self.train_iter, desc=' - Pretraining Generator', leave=False):
             data_var = data[const.SEQS_KEY]
             cr_var = data[const.CR_SEQS_KEY]  # chord roots
