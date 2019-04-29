@@ -1,15 +1,29 @@
-import sys
-
-sys.path.append("./mgeval")
-
+import argparse
+import os
 import glob
 import os.path as op
-from mgeval import core, utils
+from mgeval.mgeval import core, utils
 from sklearn.model_selection import LeaveOneOut
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
-import pdb
+
+PRETRAINED_DIR = "../model/eval/eval_pretrained"
+FULLY_TRAINED_DIR = "../model/eval/eval_fully_trained"
+TARGET_DIR = "../model/eval/eval_reference"
+
+METRICS = {"total_used_pitch": {"args": (), "kwargs": {}, "shape": (1,)},
+           "bar_used_pitch": {"args": (), "kwargs": {"track_num": 1, "num_bar": 12}, "shape": (12, 1)},
+           "total_used_note": {"args": (), "kwargs": {"track_num": 1}, "shape": (1,)},
+           "bar_used_note": {"args": (), "kwargs": {"track_num": 1, "num_bar": 12}, "shape": (12, 1)},
+           "total_pitch_class_histogram": {"args": (), "kwargs": {}, "shape": (12, 12)},
+           "bar_pitch_class_histogram": {"args": (), "kwargs": {"track_num": 1, "num_bar": 12}, "shape": (12, 12)},
+           "pitch_class_transition_matrix": {"args": (), "kwargs": {}, "shape": (12, 12)},
+           "pitch_range": {"args": (), "kwargs": {}, "shape": (1,)},
+           "avg_pitch_shift": {"args": (), "kwargs": {"track_num": 1}, "shape": (1,)},
+           "avg_IOI": {"args": (), "kwargs": {}, "shape": (1,)},
+           "note_length_hist": {"args": (), "kwargs": {"track_num": 1}, "shape": (12,)},
+           "note_length_transition_matrix": {"args": (), "kwargs": {"track_num": 1}, "shape": (12, 12)}}
 
 
 class MGEval:
@@ -95,19 +109,53 @@ class MGEval:
         print('  Overlap area:', utils.overlap_area(transposed[1][0], transposed[2][0]))
 
 
-if __name__ == "__main__":
-    mge = MGEval("../models/original_nottingham/eval_reference", "../models/original_nottingham/eval_fully_trained")
-    # Expected shape of desired metric
-    metric_shape = (12, 12)
-
-    # Metric name
-    metric_name = "note_length_transition_matrix"
-
-    # Args and kwargs if needed for the desired metric
-    args = ()
-    kwargs = { "track_num": 1 }
-
-    pred_metric, target_metric = mge.get_metric(metric_name, metric_shape, metric_shape, *args, **kwargs)
+def calculate_metric(mge, metric_name, pred_metric_shape, target_metric_shape, args, kwargs, statspath, figpath):
+    # try:
+    pred_metric, target_metric = mge.get_metric(metric_name, pred_metric_shape, 
+                                                target_metric_shape, *args, **kwargs)
     inter = mge.inter_set_cross_validation(pred_metric, target_metric)
     pred_intra, target_intra = mge.intra_set_cross_validation(pred_metric, target_metric)
-    mge.visualize(metric_name, pred_intra, target_intra, inter)
+    mge.intra_inter_difference(metric_name, pred_intra, target_intra, inter, statspath)
+    mge.visualize(metric_name, pred_intra, target_intra, inter, figpath)
+    # except Exception as e:
+        # print("Error occured while calculating {}: {}".format(metric_name, repr(e)))
+
+
+def main(model, metric_name):
+    if model == 'pretrained':
+        mge = MGEval(PRETRAINED_DIR, TARGET_DIR)
+    else:
+        mge = MGEval(FULLY_TRAINED_DIR, TARGET_DIR)
+
+    if metric_name != "all":
+        statspath = op.join(os.getcwd(), 'mgeval_results', model, metric_name)
+        figpath = op.join(os.getcwd(), 'mgeval_results', model, metric_name + '.png')
+        if not op.exists(op.dirname(statspath)):
+            os.makedirs(op.dirname(statspath))
+        if not op.exists(op.dirname(figpath)):
+            os.makedirs(op.dirname(figpath))
+        calculate_metric(mge, metric_name, METRICS[metric_name]["shape"], METRICS[metric_name]["shape"],
+                         METRICS[metric_name]["args"], METRICS[metric_name]["kwargs"], statspath, figpath)
+    else:
+        for k, v in METRICS.items():
+            statspath = op.join(os.getcwd(), 'mgeval_results', model, k + '.txt')
+            figpath = op.join(os.getcwd(), 'mgeval_results', model, k + '.png')
+            if not op.exists(op.dirname(statspath)):
+                os.makedirs(op.dirname(statspath))
+            if not op.exists(op.dirname(figpath)):
+                os.makedirs(op.dirname(figpath))
+            calculate_metric(mge, k, v["shape"], v["shape"], v["args"], v["kwargs"], statspath, figpath)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-m', '--model', default="fully_trained", type=str, 
+                        choices=("pretrained", "fully_trained"), help="which model to evaluate.")
+    parser.add_argument('-mt', '--metric', default="all", type=str,
+                        choices=("total_used_pitch", "bar_used_pitch", "total_used_note",
+                                 "bar_used_note", "total_pitch_class_histogram", "bar_pitch_class_histogram",
+                                 "pitch_class_transition_matrix", "pitch_range", "avg_pitch_shift",
+                                 "avg_IOI", "note_length_hist", "note_length_transition_matrix", "all"),
+                        help="which model to evaluate.")
+    args = parser.parse_args()
+    main(args.model, args.metric)
